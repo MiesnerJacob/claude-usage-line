@@ -1,0 +1,47 @@
+#
+# herdr-plugin.toml registers herdr-usage-pane with herdr as a first-class plugin.
+#
+# Install with `herdr plugin install <owner>/herdr-usage-pane`, or for local
+# development `herdr plugin link .` from a checkout.
+#
+# There is no [[build]] step: the plugin is pure Python 3 stdlib, so herdr can
+# register the entry points immediately after cloning.
+#
+# Herdr 0.7.x plugins cannot draw inside the sidebar chrome, so the readout
+# lives in a one-row split pane pinned along the bottom of the session. The
+# [[startup]] hook reopens it after every session restore.
+
+id = "miesnerjacob.usage-pane"
+name = "Claude Usage Pane"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "A condensed Claude Code usage-vs-limits readout pinned to the bottom of your herdr session. Shows the rolling 5-hour and 7-day windows as percentage bars with reset countdowns, colour-coded as you approach each cap."
+platforms = ["linux", "macos"]
+
+#
+# No `height` here on purpose: herdr 0.7.x accepts the key but drops it for
+# split panes, so scripts/open-pane.sh resizes the split after opening instead.
+[[panes]]
+id = "usage"
+title = "Claude usage"
+placement = "split"
+platforms = ["linux", "macos"]
+command = ["./bin/herdr-usage-pane"]
+
+[[actions]]
+id = "show"
+title = "Claude Usage: show pane"
+description = "Pin the condensed usage readout along the bottom of the current tab."
+platforms = ["linux", "macos"]
+command = ["sh", "scripts/open-pane.sh"]
+
+[[actions]]
+id = "probe"
+title = "Claude Usage: probe endpoint"
+description = "Dump the raw usage endpoint payload for debugging schema drift."
+platforms = ["linux", "macos"]
+command = ["./bin/herdr-usage-pane", "--probe"]
+
+[[startup]]
+platforms = ["linux", "macos"]
+command = ["sh", "scripts/open-pane.sh"]
