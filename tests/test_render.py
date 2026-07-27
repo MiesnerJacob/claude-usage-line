@@ -9,8 +9,10 @@ from herdr_usage_pane.render import (
     BAR_LAYOUT_MIN_WIDTH,
     _visible_length,
     format_duration,
+    render_compact,
     render_line,
     render_message,
+    render_summary,
 )
 
 
@@ -115,6 +117,39 @@ class RenderLineTest(unittest.TestCase):
     def test_empty_snapshot_falls_back_to_message(self) -> None:
         line = render_line(_snapshot(), width=80, now=0.0, color=False)
         self.assertIn("no usage windows", line)
+
+
+class CompactRenderTest(unittest.TestCase):
+    def test_compact_window_has_no_ansi(self) -> None:
+        text = render_compact(UsageWindow("5h", 35.0), width=18)
+        self.assertNotIn("\033", text)
+
+    def test_compact_window_respects_width(self) -> None:
+        for width in range(6, 40):
+            with self.subTest(width=width):
+                text = render_compact(UsageWindow("5h", 35.0), width=width)
+                self.assertLessEqual(len(text), width)
+
+    def test_compact_drops_bar_when_too_narrow(self) -> None:
+        self.assertEqual(render_compact(UsageWindow("5h", 35.0), width=8), "5h 35%")
+
+    def test_summary_drops_whole_windows_rather_than_cutting(self) -> None:
+        snapshot = _snapshot(UsageWindow("5h", 35.0), UsageWindow("7d", 32.0))
+        self.assertEqual(render_summary(snapshot, width=10), "5h 35%")
+
+    def test_summary_fits_both_windows_when_room_allows(self) -> None:
+        snapshot = _snapshot(UsageWindow("5h", 35.0), UsageWindow("7d", 32.0))
+        self.assertEqual(render_summary(snapshot, width=18), "5h 35% · 7d 32%")
+
+    def test_summary_never_exceeds_width(self) -> None:
+        snapshot = _snapshot(
+            UsageWindow("5h", 100.0),
+            UsageWindow("7d", 100.0),
+            UsageWindow("7d opus", 100.0),
+        )
+        for width in range(6, 40):
+            with self.subTest(width=width):
+                self.assertLessEqual(len(render_summary(snapshot, width)), width)
 
 
 class RenderMessageTest(unittest.TestCase):

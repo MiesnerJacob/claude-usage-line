@@ -1,4 +1,4 @@
-"""Command-line entry point for the herdr usage pane."""
+"""Command-line entry point for the herdr usage readout."""
 
 from __future__ import annotations
 
@@ -9,13 +9,24 @@ import sys
 from typing import Sequence
 
 from . import __version__
-from .app import DEFAULT_POLL_INTERVAL, PaneOptions, UsagePane
+from .app import PaneOptions, SidebarPublisher, UsagePane
 from .client import UsageClient, UsageUnavailable
 from .credentials import CredentialsError, resolve_access_token
+from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
+from .render import COMPACT_WIDTH
+from .reporter import (
+    MIN_TOKEN_VERSION,
+    ReporterError,
+    ReporterTarget,
+    SidebarReporter,
+    detect_herdr_version,
+    resolve_default_target,
+    supports_tokens,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse arguments, build the pane, and run the requested mode."""
+    """Parse arguments, build the requested display mode, and run it."""
     args = _build_parser().parse_args(argv)
     try:
         client = UsageClient(
@@ -28,15 +39,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.probe:
         return _probe(client)
 
-    pane = UsagePane(
-        client=client,
-        options=PaneOptions(
-            poll_interval=args.interval,
-            color=_should_colorize(args.no_color),
-        ),
-        stream=sys.stdout,
-    )
-    return pane.run_once() if args.once else pane.run()
+    poller = UsagePoller(client=client, poll_interval=args.interval)
+    if args.report:
+        return _run_reporter(poller, args)
+    return _run_pane(poller, args)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -45,9 +51,39 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Condensed Claude Code usage-vs-limits readout.",
     )
     parser.add_argument(
+        "--report",
+        action="store_true",
+        help="publish into herdr's sidebar as metadata tokens instead of drawing a pane",
+    )
+    parser.add_argument(
+        "--target",
+        choices=("workspace", "pane"),
+        default="workspace",
+        help="which herdr entity carries the tokens (default: workspace)",
+    )
+    parser.add_argument(
+        "--target-id",
+        metavar="ID",
+        help="explicit workspace or pane id; defaults to the focused workspace",
+    )
+    parser.add_argument(
+        "--token-width",
+        type=int,
+        default=COMPACT_WIDTH,
+        metavar="COLUMNS",
+        help=f"width budget for sidebar tokens (default: {COMPACT_WIDTH})",
+    )
+    parser.add_argument(
+        "--ttl-ms",
+        type=int,
+        default=90_000,
+        metavar="MS",
+        help="how long herdr keeps a token if this process dies (default: 90000)",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
-        help="print one line and exit, for statuslines and scripts",
+        help="do one update and exit, for statuslines and scripts",
     )
     parser.add_argument(
         "--probe",
@@ -73,6 +109,57 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=__version__)
     return parser
+
+
+def _run_pane(poller: UsagePoller, args: argparse.Namespace) -> int:
+    pane = UsagePane(
+        poller=poller,
+        options=PaneOptions(
+            poll_interval=args.interval,
+            color=_should_colorize(args.no_color),
+        ),
+        stream=sys.stdout,
+    )
+    return pane.run_once() if args.once else pane.run()
+
+
+def _run_reporter(poller: UsagePoller, args: argparse.Namespace) -> int:
+    if not supports_tokens():
+        return _fail(_version_hint())
+    try:
+        target = _resolve_target(args)
+    except ReporterError as error:
+        return _fail(str(error))
+
+    publisher = SidebarPublisher(
+        poller=poller,
+        reporter=SidebarReporter(
+            target=target,
+            ttl_ms=args.ttl_ms,
+            token_width=args.token_width,
+        ),
+        publish_interval=args.interval,
+        on_error=lambda message: _fail(message),
+    )
+    return publisher.run_once() if args.once else publisher.run()
+
+
+def _resolve_target(args: argparse.Namespace) -> ReporterTarget:
+    if args.target_id:
+        return ReporterTarget(kind=args.target, entity_id=args.target_id)
+    if args.target == "pane":
+        raise ReporterError("--target pane requires --target-id")
+    return resolve_default_target()
+
+
+def _version_hint() -> str:
+    found = detect_herdr_version()
+    required = ".".join(str(part) for part in MIN_TOKEN_VERSION)
+    current = ".".join(str(part) for part in found) if found else "unknown"
+    return (
+        f"sidebar tokens need herdr {required}+ (found {current}); "
+        "run `herdr update`, or use the pane or --once statusline mode"
+    )
 
 
 def _probe(client: UsageClient) -> int:

@@ -14,6 +14,7 @@ SEPARATOR = " │ "
 MIN_BAR_WIDTH = 4
 MAX_BAR_WIDTH = 12
 BAR_LAYOUT_MIN_WIDTH = 46
+COMPACT_WIDTH = 18
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
@@ -48,6 +49,40 @@ def render_line(
 def render_message(text: str, width: int, color: bool = True) -> str:
     """Render a status or error message in place of the usage line."""
     return _fit(_paint(f"claude usage — {text}", _DIM, color), width)
+
+
+def render_compact(window: UsageWindow, width: int = COMPACT_WIDTH) -> str:
+    """Render one window as short plain text for a herdr sidebar token.
+
+    No ANSI: sidebar tokens are styled by herdr's own config, so emitting escape
+    codes here would fight the user's theme rather than honour it.
+    """
+    percent = f"{round(window.used_percentage)}%"
+    bar = width - (len(window.label) + 1 + len(percent) + 1)
+    if bar < MIN_BAR_WIDTH:
+        return f"{window.label} {percent}"
+    bar = min(MAX_BAR_WIDTH, bar)
+    filled = min(bar, max(0, round(window.used_percentage / 100 * bar)))
+    return (
+        f"{window.label} {FILLED_GLYPH * filled}{EMPTY_GLYPH * (bar - filled)} "
+        f"{percent}"
+    )
+
+
+def render_summary(snapshot: UsageSnapshot, width: int = COMPACT_WIDTH) -> str:
+    """Render every window that fits as one short line, e.g. `5h 35% · 7d 32%`.
+
+    Windows are dropped whole rather than cut, because a truncated `7d 3` reads
+    as a real number and would misinform at a glance.
+    """
+    parts: list[str] = []
+    for window in snapshot.windows:
+        piece = f"{window.label} {round(window.used_percentage)}%"
+        if parts and len(" · ".join([*parts, piece])) > width:
+            break
+        parts.append(piece)
+    summary = " · ".join(parts)
+    return summary if len(summary) <= width else summary[:width].rstrip()
 
 
 def format_duration(seconds: int | None) -> str:
