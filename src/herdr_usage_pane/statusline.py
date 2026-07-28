@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import select
 import sys
 from pathlib import Path
@@ -21,6 +22,9 @@ MAX_PAYLOAD_BYTES = 1 << 20
 CONTEXT_LABEL = "Context"
 WORKTREE_PREFIX = "wt"
 MIN_SHARED_SUFFIX = 6
+TRANSCRIPT_TAIL_BYTES = 256 * 1024
+
+_FILE_PATH_PATTERN = re.compile(r'"file_path"\s*:\s*"([^"]+)"')
 
 SHORT_LABELS: dict[str, str] = {
     "Context": "Ctx",
@@ -97,18 +101,29 @@ def merge_scoped(
     )
 
 
-def info_segments(payload: dict) -> list[tuple[str, str]]:
+def info_segments(
+    payload: dict, branch_source: str = "activity"
+) -> list[tuple[str, str]]:
     """Session context for the row above the bars, as (text, style) pairs.
 
     Styles are names, not escape codes, so this stays a payload reader and the
     renderer keeps sole responsibility for ANSI.
+
+    `branch_source` chooses what the branch describes. `activity` uses the files
+    the session has edited, falling back to `cwd`; `cwd` uses only the last
+    command's directory. Activity is the default because it answers the question
+    that matters — what is this session changing — and survives an agent that
+    creates a worktree but keeps running commands from the main checkout.
 
     Line counts are the session totals the payload provides, not a per-branch
     diff: scoping them to the branch would need a `git diff` against a base ref
     that cannot be inferred reliably, and a subprocess on every redraw.
     """
     segments: list[tuple[str, str]] = []
-    branch = git_label(payload.get("cwd"))
+    directory = payload.get("cwd")
+    if branch_source == "activity":
+        directory = activity_dir(payload) or directory
+    branch = git_label(directory)
     if branch:
         segments.append((branch, "branch"))
     model = _nested_str(payload, "model", "display_name")
@@ -217,6 +232,48 @@ def context_window_from_payload(payload: dict) -> UsageWindow | None:
     if isinstance(percentage, bool) or not isinstance(percentage, (int, float)):
         return None
     return UsageWindow(label=CONTEXT_LABEL, used_percentage=float(percentage))
+
+
+def activity_dir(payload: dict) -> str | None:
+    """The directory this session is operating *on*, from its transcript.
+
+    `cwd` only says where the last command ran, which is a different question: an
+    agent that creates a worktree and then edits it by absolute path from the
+    main checkout has a `cwd` of the main checkout while every edit lands in the
+    worktree. The files it edited are the better answer.
+
+    Only `file_path` tool inputs are considered, never message text. Prose in a
+    transcript mentions paths constantly — including paths being discussed rather
+    than touched — and matching those would label the session after whatever it
+    last talked about.
+    """
+    path = payload.get("transcript_path")
+    if not isinstance(path, str) or not path:
+        return None
+    tail = _read_tail(Path(path), TRANSCRIPT_TAIL_BYTES)
+    if not tail:
+        return None
+    for match in reversed(_FILE_PATH_PATTERN.findall(tail)):
+        candidate = Path(match.replace("\\/", "/")).parent
+        if _find_git_path(candidate) is not None:
+            return str(candidate)
+    return None
+
+
+def _read_tail(path: Path, limit: int) -> str:
+    """Last `limit` bytes of a file, or empty on any failure.
+
+    Bounded because a long session's transcript reaches many megabytes and this
+    runs on every statusline redraw.
+    """
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - limit))
+            return handle.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
 
 
 def git_label(cwd: str | None) -> str | None:

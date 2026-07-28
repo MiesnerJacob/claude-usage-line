@@ -150,6 +150,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print a context row above the bars: branch, model, effort, lines",
     )
     parser.add_argument(
+        "--branch-source",
+        choices=("activity", "cwd"),
+        default="activity",
+        help=(
+            "activity labels the branch from the files this session edited; "
+            "cwd labels it from the last command's directory"
+        ),
+    )
+    parser.add_argument(
         "--info-position",
         choices=("above", "below"),
         default="above",
@@ -232,7 +241,7 @@ def _render_cached(args: argparse.Namespace) -> str | None:
     )
     if not args.info_row:
         return bars
-    segments = info_segments(payload)
+    segments = info_segments(payload, args.branch_source)
     if args.context == "count":
         counted = context_segment(payload)
         if counted is not None:

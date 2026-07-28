@@ -5,12 +5,14 @@ The payload shape here was captured from Claude Code 2.1.220.
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from herdr_usage_pane.model import UsageSnapshot, UsageWindow
 from herdr_usage_pane.statusline import (
+    activity_dir,
     context_segment,
     git_label,
     info_segments,
@@ -267,6 +269,104 @@ class ContextSegmentTest(unittest.TestCase):
             }
         }
         self.assertEqual(context_segment(payload)[0], "ctx 850/200k 0%")
+
+
+class ActivityDirTest(unittest.TestCase):
+    """The branch should follow what the session edits, not where it sits."""
+
+    def setUp(self) -> None:
+        self._directory = tempfile.TemporaryDirectory()
+        self.root = Path(self._directory.name)
+        self.repo = self.root / "project"
+        (self.repo / ".git").mkdir(parents=True)
+        (self.repo / ".git" / "HEAD").write_text("ref: refs/heads/staging\n")
+
+    def tearDown(self) -> None:
+        self._directory.cleanup()
+
+    def _transcript(self, *lines: str) -> str:
+        path = self.root / "transcript.jsonl"
+        path.write_text("\n".join(lines) + "\n")
+        return str(path)
+
+    def test_uses_the_last_edited_file(self) -> None:
+        transcript = self._transcript(
+            json.dumps({"input": {"file_path": str(self.repo / "a.py")}}),
+            json.dumps({"input": {"file_path": str(self.repo / "src" / "b.py")}}),
+        )
+        self.assertEqual(
+            activity_dir({"transcript_path": transcript}),
+            str(self.repo / "src"),
+        )
+
+    def test_ignores_paths_mentioned_only_in_prose(self) -> None:
+        transcript = self._transcript(
+            json.dumps({"input": {"file_path": str(self.repo / "a.py")}}),
+            json.dumps({"text": f"you should look at {self.root / 'elsewhere.py'}"}),
+        )
+        self.assertEqual(
+            activity_dir({"transcript_path": transcript}), str(self.repo)
+        )
+
+    def test_skips_paths_outside_a_repository(self) -> None:
+        transcript = self._transcript(
+            json.dumps({"input": {"file_path": str(self.repo / "a.py")}}),
+            json.dumps({"input": {"file_path": str(self.root / "loose.txt")}}),
+        )
+        self.assertEqual(
+            activity_dir({"transcript_path": transcript}), str(self.repo)
+        )
+
+    def test_missing_transcript_is_none(self) -> None:
+        self.assertIsNone(
+            activity_dir({"transcript_path": str(self.root / "absent.jsonl")})
+        )
+
+    def test_no_transcript_path_is_none(self) -> None:
+        self.assertIsNone(activity_dir({}))
+
+    def test_transcript_without_edits_is_none(self) -> None:
+        transcript = self._transcript(json.dumps({"text": "no tools used"}))
+        self.assertIsNone(activity_dir({"transcript_path": transcript}))
+
+
+class BranchSourceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._directory = tempfile.TemporaryDirectory()
+        self.root = Path(self._directory.name)
+        self.main = self.root / "project"
+        (self.main / ".git").mkdir(parents=True)
+        (self.main / ".git" / "HEAD").write_text("ref: refs/heads/staging\n")
+        gitdir = self.main / ".git" / "worktrees" / "project-ment-210-form-cancel"
+        gitdir.mkdir(parents=True)
+        gitdir.joinpath("HEAD").write_text("ref: refs/heads/feature/ment-210-form-cancel\n")
+        self.tree = self.root / "project-ment-210-form-cancel"
+        self.tree.mkdir()
+        self.tree.joinpath(".git").write_text(f"gitdir: {gitdir}\n")
+        transcript = self.root / "t.jsonl"
+        transcript.write_text(
+            json.dumps({"input": {"file_path": str(self.tree / "x.py")}}) + "\n"
+        )
+        self.payload = {
+            "cwd": str(self.main),
+            "transcript_path": str(transcript),
+        }
+
+    def tearDown(self) -> None:
+        self._directory.cleanup()
+
+    def test_activity_prefers_the_edited_worktree(self) -> None:
+        segments = info_segments(self.payload, branch_source="activity")
+        self.assertEqual(segments[0], ("wt feature/ment-210-form-cancel", "branch"))
+
+    def test_cwd_reports_the_shell_directory(self) -> None:
+        segments = info_segments(self.payload, branch_source="cwd")
+        self.assertEqual(segments[0], ("staging", "branch"))
+
+    def test_activity_falls_back_to_cwd(self) -> None:
+        payload = {"cwd": str(self.main)}
+        segments = info_segments(payload, branch_source="activity")
+        self.assertEqual(segments[0], ("staging", "branch"))
 
 if __name__ == "__main__":
     unittest.main()
