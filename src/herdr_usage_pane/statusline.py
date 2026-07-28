@@ -20,7 +20,6 @@ from .model import UsageSnapshot, UsageWindow
 STDIN_TIMEOUT_SECONDS = 0.15
 MAX_PAYLOAD_BYTES = 1 << 20
 CONTEXT_LABEL = "Context"
-WORKTREE_PREFIX = "wt"
 MIN_SHARED_RUN = 6
 TRANSCRIPT_TAIL_BYTES = 256 * 1024
 
@@ -123,9 +122,10 @@ def info_segments(
     directory = payload.get("cwd")
     if branch_source == "activity":
         directory = activity_dir(payload) or directory
-    branch = git_label(directory)
-    if branch:
-        segments.append((branch, "branch"))
+    context = git_context(directory)
+    if context is not None:
+        label, is_worktree = context
+        segments.append((label, "worktree" if is_worktree else "branch"))
     model = _nested_str(payload, "model", "display_name")
     if model:
         segments.append((model, "dim"))
@@ -276,12 +276,12 @@ def _read_tail(path: Path, limit: int) -> str:
         return ""
 
 
-def git_label(cwd: str | None) -> str | None:
-    """Branch name, or `worktree:branch` when inside a linked worktree.
+def git_context(cwd: str | None) -> tuple[str, bool] | None:
+    """The branch label and whether it belongs to a linked worktree.
 
-    Reads the git metadata directly instead of shelling out to `git`: this runs
-    on every statusline redraw, where a subprocess costs more than everything
-    else combined.
+    Worktrees are distinguished by colour rather than a text marker: a prefix
+    like `wt ` spends columns on every render to convey one bit, and the branch
+    name is what you actually read.
     """
     if not cwd:
         return None
@@ -291,12 +291,18 @@ def git_label(cwd: str | None) -> str | None:
     worktree = _worktree_name(git_path)
     branch = _head_branch(git_path)
     if worktree is None:
-        return branch
+        return (branch, False) if branch else None
     if branch is None:
-        return f"{WORKTREE_PREFIX} {worktree}"
+        return (worktree, True)
     if _names_overlap(worktree, branch):
-        return f"{WORKTREE_PREFIX} {branch}"
-    return f"{WORKTREE_PREFIX} {worktree}:{branch}"
+        return (branch, True)
+    return (f"{worktree}:{branch}", True)
+
+
+def git_label(cwd: str | None) -> str | None:
+    """Just the branch label, without the worktree flag."""
+    context = git_context(cwd)
+    return None if context is None else context[0]
 
 
 def _names_overlap(worktree: str, branch: str) -> bool:

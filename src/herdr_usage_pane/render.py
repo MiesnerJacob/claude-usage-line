@@ -23,8 +23,10 @@ _DIM = "\033[2m"
 _CYAN = "\033[36m"
 _GREEN = "\033[32m"
 _RED = "\033[31m"
+_MAGENTA = "\033[35m"
 _INFO_STYLES = {
     "branch": _CYAN,
+    "worktree": _MAGENTA,
     "dim": _DIM,
     "added": _GREEN,
     "removed": _RED,
