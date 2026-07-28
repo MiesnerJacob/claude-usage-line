@@ -27,7 +27,7 @@ def cache_path() -> Path:
     """Location of the snapshot cache, honouring XDG_CACHE_HOME."""
     base = os.environ.get("XDG_CACHE_HOME")
     root = Path(base) if base else Path.home() / ".cache"
-    return root / "herdr-usage-pane" / "snapshot.json"
+    return root / "claude-usage-line" / "snapshot.json"
 
 
 def spawn_background_refresh(interval: float) -> None:
@@ -47,7 +47,7 @@ def spawn_background_refresh(interval: float) -> None:
         marker.touch()
     except OSError:
         return
-    launcher = Path(__file__).resolve().parents[2] / "bin" / "herdr-usage-pane"
+    launcher = Path(__file__).resolve().parents[2] / "bin" / "claude-usage-line"
     if not launcher.exists():
         return
     try:

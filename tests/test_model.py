@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from herdr_usage_pane.model import Severity, UsageSnapshot, UsageWindow
+from claude_usage_line.model import Severity, UsageSnapshot, UsageWindow
 
 
 class UsageWindowTest(unittest.TestCase):

@@ -10,8 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from herdr_usage_pane.model import UsageSnapshot, UsageWindow
-from herdr_usage_pane.statusline import (
+from claude_usage_line.model import UsageSnapshot, UsageWindow
+from claude_usage_line.statusline import (
     _names_overlap,
     activity_dir,
     context_segment,

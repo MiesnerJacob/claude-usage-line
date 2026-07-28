@@ -9,12 +9,12 @@ from __future__ import annotations
 import datetime as dt
 import unittest
 
-from herdr_usage_pane.client import (
+from claude_usage_line.client import (
     UsageUnavailable,
     humanize_kind,
     parse_snapshot,
 )
-from herdr_usage_pane.model import Severity
+from claude_usage_line.model import Severity
 
 
 LIVE_PAYLOAD = {

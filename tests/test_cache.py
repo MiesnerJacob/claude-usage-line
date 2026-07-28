@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from herdr_usage_pane import cache
-from herdr_usage_pane.model import Severity, UsageSnapshot, UsageWindow
+from claude_usage_line import cache
+from claude_usage_line.model import Severity, UsageSnapshot, UsageWindow
 
 
 def _snapshot(captured_at: float = 1_000.0) -> UsageSnapshot:

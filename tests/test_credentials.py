@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from herdr_usage_pane.credentials import _find_access_token
+from claude_usage_line.credentials import _find_access_token
 
 
 class FindAccessTokenTest(unittest.TestCase):

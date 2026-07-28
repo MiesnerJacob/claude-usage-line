@@ -92,9 +92,9 @@ def _launcher_path() -> Path | None:
     candidates = []
     root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if root:
-        candidates.append(Path(root) / "bin" / "herdr-usage-pane")
-    candidates.append(Path(__file__).resolve().parents[1] / "bin" / "herdr-usage-pane")
-    found = shutil.which("herdr-usage-pane")
+        candidates.append(Path(root) / "bin" / "claude-usage-line")
+    candidates.append(Path(__file__).resolve().parents[1] / "bin" / "claude-usage-line")
+    found = shutil.which("claude-usage-line")
     if found:
         candidates.append(Path(found))
     for candidate in candidates:

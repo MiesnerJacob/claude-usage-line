@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sys
 import time
 from typing import Sequence
@@ -15,12 +14,12 @@ from . import __version__
 # U+2800 BRAILLE PATTERN BLANK: renders as empty space but is not whitespace, so
 # a consumer that trims blank lines still treats the gap row as content.
 GAP_ROW = "\u2800"
-from .app import PaneOptions, SidebarPublisher, UsagePane
+from .app import LineOptions, UsageLine, terminal_width
 from .cache import read_snapshot, spawn_background_refresh
 from .client import UsageClient, UsageUnavailable
 from .credentials import CredentialsError, resolve_access_token
 from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
-from .render import COMPACT_WIDTH, render_info_row, render_line
+from .render import render_info_row, render_line
 from .model import UsageSnapshot
 from .statusline import (
     context_window_from_payload,
@@ -32,21 +31,12 @@ from .statusline import (
     read_stdin_payload,
     snapshot_from_payload,
 )
-from .reporter import (
-    MIN_TOKEN_VERSION,
-    ReporterError,
-    ReporterTarget,
-    SidebarReporter,
-    detect_herdr_version,
-    resolve_default_target,
-    supports_tokens,
-)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse arguments, build the requested display mode, and run it."""
     args = _build_parser().parse_args(argv)
-    if args.once and not args.report and not args.probe:
+    if not args.probe and not args.refresh_cache:
         cached = _render_cached(args)
         if cached is not None:
             sys.stdout.write(cached + "\n")
@@ -68,45 +58,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     poller = UsagePoller(client=client, poll_interval=args.interval)
     if args.once:
         poller.prime_from_cache()
-    if args.report:
-        return _run_reporter(poller, args)
-    return _run_pane(poller, args)
+    return _run_line(poller, args)
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="herdr-usage-pane",
+        prog="claude-usage-line",
         description="Condensed Claude Code usage-vs-limits readout.",
-    )
-    parser.add_argument(
-        "--report",
-        action="store_true",
-        help="publish into herdr's sidebar as metadata tokens instead of drawing a pane",
-    )
-    parser.add_argument(
-        "--target",
-        choices=("workspace", "pane"),
-        default="workspace",
-        help="which herdr entity carries the tokens (default: workspace)",
-    )
-    parser.add_argument(
-        "--target-id",
-        metavar="ID",
-        help="explicit workspace or pane id; defaults to the focused workspace",
-    )
-    parser.add_argument(
-        "--token-width",
-        type=int,
-        default=COMPACT_WIDTH,
-        metavar="COLUMNS",
-        help=f"width budget for sidebar tokens (default: {COMPACT_WIDTH})",
-    )
-    parser.add_argument(
-        "--ttl-ms",
-        type=int,
-        default=90_000,
-        metavar="MS",
-        help="how long herdr keeps a token if this process dies (default: 90000)",
     )
     parser.add_argument(
         "--once",
@@ -230,7 +188,7 @@ def _render_cached(args: argparse.Namespace) -> str | None:
             )
     if args.short_labels:
         snapshot = shorten_labels(snapshot)
-    width = shutil.get_terminal_size((80, 1)).columns
+    width = terminal_width()
     color = _should_colorize(args)
     bars = render_line(
         snapshot,
@@ -260,54 +218,15 @@ def _refresh_cache(client: UsageClient, args: argparse.Namespace) -> int:
     return 0 if poller.poll_if_due() else 1
 
 
-def _run_pane(poller: UsagePoller, args: argparse.Namespace) -> int:
-    pane = UsagePane(
+def _run_line(poller: UsagePoller, args: argparse.Namespace) -> int:
+    line = UsageLine(
         poller=poller,
-        options=PaneOptions(
-            poll_interval=args.interval,
-            color=_should_colorize(args),
+        options=LineOptions(
+            poll_interval=args.interval, color=_should_colorize(args)
         ),
         stream=sys.stdout,
     )
-    return pane.run_once() if args.once else pane.run()
-
-
-def _run_reporter(poller: UsagePoller, args: argparse.Namespace) -> int:
-    if not supports_tokens():
-        return _fail(_version_hint())
-    try:
-        target = _resolve_target(args)
-    except ReporterError as error:
-        return _fail(str(error))
-
-    publisher = SidebarPublisher(
-        poller=poller,
-        reporter=SidebarReporter(
-            target=target,
-            ttl_ms=args.ttl_ms,
-            token_width=args.token_width,
-        ),
-        publish_interval=args.interval,
-        on_error=lambda message: _fail(message),
-        resolve_target=None if args.target_id else lambda: _resolve_target(args),
-    )
-    return publisher.run_once() if args.once else publisher.run()
-
-
-def _resolve_target(args: argparse.Namespace) -> ReporterTarget:
-    if args.target_id:
-        return ReporterTarget(kind=args.target, entity_id=args.target_id)
-    return resolve_default_target(args.target)
-
-
-def _version_hint() -> str:
-    found = detect_herdr_version()
-    required = ".".join(str(part) for part in MIN_TOKEN_VERSION)
-    current = ".".join(str(part) for part in found) if found else "unknown"
-    return (
-        f"sidebar tokens need herdr {required}+ (found {current}); "
-        "run `herdr update`, or use the pane or --once statusline mode"
-    )
+    return line.run_once()
 
 
 def _probe(client: UsageClient) -> int:
@@ -335,7 +254,7 @@ def _should_colorize(args: argparse.Namespace) -> bool:
 
 
 def _fail(message: str) -> int:
-    sys.stderr.write(f"herdr-usage-pane: {message}\n")
+    sys.stderr.write(f"claude-usage-line: {message}\n")
     return 1
 
 

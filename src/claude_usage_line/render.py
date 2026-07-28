@@ -1,7 +1,8 @@
 """Render a usage snapshot as one condensed terminal line.
 
-The pane is one row tall, so every renderer here is width-budgeted: the layout
-degrades from bars to percentages to bare numbers rather than wrapping.
+Every renderer here is width-budgeted: the layout degrades from bars to
+percentages to bare numbers rather than wrapping, because a status line that
+wraps costs a row it was not given.
 """
 
 from __future__ import annotations
@@ -14,9 +15,7 @@ SEPARATOR = " │ "
 MIN_BAR_WIDTH = 4
 MAX_BAR_WIDTH = 12
 BAR_LAYOUT_MIN_WIDTH = 46
-COMPACT_WIDTH = 22
 
-PANEL_MIN_HEIGHT = 2
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
@@ -92,134 +91,6 @@ def render_info_row(
 def render_message(text: str, width: int, color: bool = True) -> str:
     """Render a status or error message in place of the usage line."""
     return _fit(_paint(f"claude usage — {text}", _DIM, color), width)
-
-
-def render_panel(
-    snapshot: UsageSnapshot,
-    width: int,
-    now: float,
-    color: bool = True,
-    stale: bool = False,
-    height: int | None = None,
-) -> list[str]:
-    """Render one row per usage window, sized to the pane.
-
-    No title row: herdr already draws the pane's label on its border, so a
-    header here would repeat it. At `height == 1` the windows collapse onto a
-    single horizontal line instead of being truncated away.
-    """
-    if not snapshot.windows:
-        return [render_message("no usage windows reported", width, color)]
-    if height is not None and height < len(snapshot.windows):
-        return _render_folded(snapshot, width, now, color, stale, height)
-    label_width = max(len(window.label) for window in snapshot.windows)
-    reset_width = max(
-        len(format_duration(window.seconds_until_reset(now)))
-        for window in snapshot.windows
-    )
-    rows = [
-        _render_panel_row(window, width, label_width, reset_width, now, color)
-        for window in snapshot.windows
-    ]
-    return rows[:height] if height is not None else rows
-
-
-def _render_folded(
-    snapshot: UsageSnapshot,
-    width: int,
-    now: float,
-    color: bool,
-    stale: bool,
-    height: int,
-) -> list[str]:
-    """Fit every window into fewer rows than there are windows.
-
-    Windows are folded across the available rows rather than dropped, because a
-    missing row reads as a missing limit. herdr clamps split ratios to 0.9, so a
-    pane cannot be shorter than two usable rows; folding uses both instead of
-    leaving one blank.
-    """
-    windows = list(snapshot.windows)
-    per_row = -(-len(windows) // max(1, height))
-    lines = []
-    for start in range(0, len(windows), per_row):
-        group = UsageSnapshot(
-            windows=tuple(windows[start : start + per_row]),
-            captured_at=snapshot.captured_at,
-        )
-        lines.append(render_line(group, width, now, color, stale and not lines))
-    return lines[:height]
-
-
-def _render_panel_row(
-    window: UsageWindow,
-    width: int,
-    label_width: int,
-    reset_width: int,
-    now: float,
-    color: bool,
-) -> str:
-    """One window as `label  bar  pct  resets`, columns aligned across rows."""
-    tint = _SEVERITY_COLORS[window.severity]
-    label = window.label.ljust(label_width)
-    percent = f"{round(window.used_percentage):>3d}%"
-    countdown = format_duration(window.seconds_until_reset(now)).rjust(reset_width)
-    trailing = len(countdown) + 2 if reset_width else 0
-    bar = width - (label_width + 2 + len(percent) + 2 + trailing)
-    if bar < MIN_BAR_WIDTH:
-        return _fit(
-            f"{_paint(label, _DIM, color)} {_paint(percent, tint, color)}", width
-        )
-    row = (
-        f"{_paint(label, _DIM, color)}  "
-        f"{_render_bar(window.used_percentage, bar, tint, color)}  "
-        f"{_paint(percent, tint, color)}"
-    )
-    return f"{row}  {_paint(countdown, _DIM, color)}" if trailing else row
-
-
-def render_compact(
-    window: UsageWindow,
-    width: int = COMPACT_WIDTH,
-    label_width: int | None = None,
-) -> str:
-    """Render one window as short plain text for a herdr sidebar token.
-
-    Pass `label_width` when rendering several windows as stacked sidebar rows:
-    padding every label to the widest one lines the bars and percentages up
-    into columns instead of ragged text.
-
-    No ANSI: sidebar tokens are styled by herdr's own config, so emitting escape
-    codes here would fight the user's theme rather than honour it.
-    """
-    label = window.label.ljust(label_width or len(window.label))
-    percent = f"{round(window.used_percentage):>3d}%"
-    bar = width - (len(label) + 1 + len(percent) + 1)
-    if bar < MIN_BAR_WIDTH:
-        return f"{label} {percent}"[:width] if label_width else (
-            f"{label} {round(window.used_percentage)}%"[:width]
-        )
-    bar = min(MAX_BAR_WIDTH, bar)
-    filled = min(bar, max(0, round(window.used_percentage / 100 * bar)))
-    return (
-        f"{label} {FILLED_GLYPH * filled}{EMPTY_GLYPH * (bar - filled)} {percent}"
-    )
-
-
-def render_summary(snapshot: UsageSnapshot, width: int = COMPACT_WIDTH) -> str:
-    """Render every window that fits as one short line, e.g. `5h 35% · 7d 32%`.
-
-    Windows are dropped whole rather than cut, because a truncated `7d 3` reads
-    as a real number and would misinform at a glance.
-    """
-    parts: list[str] = []
-    for window in snapshot.windows:
-        piece = f"{window.label} {round(window.used_percentage)}%"
-        if parts and len(" · ".join([*parts, piece])) > width:
-            break
-        parts.append(piece)
-    summary = " · ".join(parts)
-    return summary if len(summary) <= width else summary[:width].rstrip()
 
 
 def format_duration(seconds: int | None) -> str:

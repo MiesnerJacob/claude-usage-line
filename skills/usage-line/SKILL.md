@@ -32,7 +32,7 @@ Run the readout by hand with a sample payload. It prints two rows and exits:
 
 ```sh
 echo '{"cwd":"'"$PWD"'","rate_limits":{"five_hour":{"used_percentage":50}}}' \
-  | "${CLAUDE_PLUGIN_ROOT}/bin/herdr-usage-pane" --once --info-row --color never
+  | "${CLAUDE_PLUGIN_ROOT}/bin/claude-usage-line" --once --info-row --color never
 ```
 
 ## Options
