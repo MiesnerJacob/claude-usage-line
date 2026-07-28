@@ -23,10 +23,19 @@ USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
 FALLBACK_CLAUDE_VERSION = "2.0.0"
 VERSION_TIMEOUT_SECONDS = 5.0
 
+# Only the two universal windows are named; any other key the endpoint grows is
+# humanised from the key itself so new limit types appear without a code change.
 LEGACY_WINDOW_LABELS: dict[str, str] = {
     "five_hour": "Current Session",
     "seven_day": "Week (all)",
-    "seven_day_opus": "Week (Opus)",
+}
+LEGACY_PRIMARY_KEYS = ("five_hour", "seven_day")
+DURATION_PREFIXES: dict[str, str] = {
+    "five_hour": "Session",
+    "seven_day": "Week",
+    "weekly": "Week",
+    "monthly": "Month",
+    "daily": "Day",
 }
 
 KIND_LABELS: dict[str, str] = {
@@ -116,7 +125,7 @@ def parse_snapshot(
     """
     windows = _parse_limits(payload.get("limits"), include_scoped)
     if not windows:
-        windows = _parse_legacy_windows(payload)
+        windows = _parse_legacy_windows(payload, include_scoped)
     if not windows:
         raise UsageUnavailable("no recognisable usage windows in response")
     return UsageSnapshot(windows=tuple(windows), captured_at=now)
@@ -137,7 +146,7 @@ def _parse_limit_entry(entry: Any, include_scoped: bool) -> UsageWindow | None:
     if not isinstance(entry, dict):
         return None
     kind = entry.get("kind")
-    if not isinstance(kind, str) or kind not in KIND_LABELS:
+    if not isinstance(kind, str) or not kind:
         return None
     if kind not in PRIMARY_KINDS and not include_scoped:
         return None
@@ -155,18 +164,42 @@ def _parse_limit_entry(entry: Any, include_scoped: bool) -> UsageWindow | None:
 def _limit_label(entry: dict[str, Any], kind: str) -> str:
     """Label for a limit, naming the model when the limit is model-scoped.
 
-    Labels mirror the wording of Claude Code's own `/usage` screen so the
-    sidebar and that screen can be read against each other without translation.
+    Known kinds get wording that mirrors Claude Code's own `/usage` screen, so
+    the two can be read against each other. Unknown kinds are humanised from the
+    kind string rather than dropped: the endpoint already lists unreleased limit
+    types (`seven_day_cowork`, `nimbus_quill`), and a limit that exists but is
+    not displayed is worse than one with an awkward name.
     """
-    base = KIND_LABELS[kind]
+    base = KIND_LABELS.get(kind) or humanize_kind(kind)
+    name = _scoped_model_name(entry)
+    return f"{base} ({name})" if name else base
+
+
+def _scoped_model_name(entry: dict[str, Any]) -> str | None:
     scope = entry.get("scope")
     if not isinstance(scope, dict):
-        return base
+        return None
     model = scope.get("model")
     if not isinstance(model, dict):
-        return base
+        return None
     name = model.get("display_name")
-    return f"{base} ({name})" if isinstance(name, str) and name else base
+    return name if isinstance(name, str) and name else None
+
+
+def humanize_kind(kind: str) -> str:
+    """Turn an unfamiliar kind or key into a readable label.
+
+    `weekly_opus` becomes `Weekly Opus`; the duration prefixes the endpoint uses
+    for legacy keys are normalised so `seven_day_cowork` reads as `Week Cowork`.
+    """
+    text = kind.replace("-", "_")
+    for prefix, replacement in DURATION_PREFIXES.items():
+        if text == prefix:
+            return replacement
+        if text.startswith(f"{prefix}_"):
+            remainder = text[len(prefix) + 1 :].replace("_", " ").title()
+            return f"{replacement} ({remainder})"
+    return text.replace("_", " ").title()
 
 
 def _reported_severity(entry: dict[str, Any]) -> Severity | None:
@@ -176,22 +209,40 @@ def _reported_severity(entry: dict[str, Any]) -> Severity | None:
     return SERVER_SEVERITIES.get(severity.lower())
 
 
-def _parse_legacy_windows(payload: dict[str, Any]) -> list[UsageWindow]:
+def _parse_legacy_windows(
+    payload: dict[str, Any], include_scoped: bool = True
+) -> list[UsageWindow]:
+    """Parse the flat per-window keys, discovering unfamiliar ones.
+
+    Keys are not enumerated from a fixed list: whatever carries a utilization
+    number is treated as a window, so a limit type added upstream shows up.
+    """
     container = _locate_windows(payload)
     windows = []
-    for key, label in LEGACY_WINDOW_LABELS.items():
+    for key in sorted(container, key=_legacy_key_order):
+        if key not in LEGACY_PRIMARY_KEYS and not include_scoped:
+            continue
+        label = LEGACY_WINDOW_LABELS.get(key) or humanize_kind(key)
         window = _parse_window(container.get(key), label)
         if window is not None:
             windows.append(window)
     return windows
 
 
+def _legacy_key_order(key: str) -> tuple[int, str]:
+    """Sort the universal windows first, then everything else by name."""
+    return (
+        LEGACY_PRIMARY_KEYS.index(key) if key in LEGACY_PRIMARY_KEYS else len(LEGACY_PRIMARY_KEYS),
+        key,
+    )
+
+
 def _locate_windows(payload: dict[str, Any]) -> dict[str, Any]:
-    if any(key in payload for key in LEGACY_WINDOW_LABELS):
+    if any(key in payload for key in LEGACY_PRIMARY_KEYS):
         return payload
     for value in payload.values():
         if isinstance(value, dict) and any(
-            key in value for key in LEGACY_WINDOW_LABELS
+            key in value for key in LEGACY_PRIMARY_KEYS
         ):
             return value
     return payload

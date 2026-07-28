@@ -141,6 +141,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print a context row above the bars: branch, model, effort, lines",
     )
     parser.add_argument(
+        "--row-gap",
+        type=int,
+        default=0,
+        metavar="N",
+        help="blank rows between the info row and the bars (statusline only)",
+    )
+    parser.add_argument(
         "--short-labels",
         action="store_true",
         help="abbreviate window labels so a one-line readout keeps its bars",
@@ -211,7 +218,12 @@ def _render_cached(args: argparse.Namespace) -> str | None:
     if not args.info_row:
         return bars
     info = render_info_row(info_segments(payload), width, color)
-    return f"{info}\n{bars}" if info else bars
+    if not info:
+        return bars
+    # A space, not an empty string: a bare blank line risks being trimmed before
+    # it becomes a row, and the point of the gap is that it occupies one.
+    gap = "\n".join(" " for _ in range(max(0, args.row_gap)))
+    return f"{info}\n{gap}\n{bars}" if gap else f"{info}\n{bars}"
 
 
 def _refresh_cache(client: UsageClient, args: argparse.Namespace) -> int:

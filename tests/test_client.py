@@ -9,7 +9,11 @@ from __future__ import annotations
 import datetime as dt
 import unittest
 
-from herdr_usage_pane.client import UsageUnavailable, parse_snapshot
+from herdr_usage_pane.client import (
+    UsageUnavailable,
+    humanize_kind,
+    parse_snapshot,
+)
 from herdr_usage_pane.model import Severity
 
 
@@ -186,6 +190,7 @@ class ParseSnapshotTest(unittest.TestCase):
                 "seven_day_opus": {"utilization": 3},
             },
             now=0.0,
+            include_scoped=True,
         )
         self.assertEqual([w.label for w in snapshot.windows], ["Current Session", "Week (all)", "Week (Opus)"])
 
@@ -196,6 +201,70 @@ class ParseSnapshotTest(unittest.TestCase):
     def test_ignores_boolean_masquerading_as_number(self) -> None:
         with self.assertRaises(UsageUnavailable):
             parse_snapshot({"five_hour": {"utilization": True}}, now=0.0)
+
+
+class DynamicWindowTest(unittest.TestCase):
+    """New limit types must appear without a code change."""
+
+    def test_unknown_kind_is_labelled_not_dropped(self) -> None:
+        payload = {"limits": [{"kind": "monthly_all", "percent": 12}]}
+        snapshot = parse_snapshot(payload, now=0.0, include_scoped=True)
+        self.assertEqual([w.label for w in snapshot.windows], ["Month (All)"])
+
+    def test_unknown_scoped_kind_keeps_its_model_name(self) -> None:
+        payload = {
+            "limits": [
+                {
+                    "kind": "weekly_scoped",
+                    "percent": 9,
+                    "scope": {"model": {"display_name": "Sonnet 5"}},
+                }
+            ]
+        }
+        snapshot = parse_snapshot(payload, now=0.0, include_scoped=True)
+        self.assertEqual([w.label for w in snapshot.windows], ["Week (Sonnet 5)"])
+
+    def test_unreleased_codename_kind_still_renders(self) -> None:
+        payload = {"limits": [{"kind": "nimbus_quill", "percent": 3}]}
+        snapshot = parse_snapshot(payload, now=0.0, include_scoped=True)
+        self.assertEqual([w.label for w in snapshot.windows], ["Nimbus Quill"])
+
+    def test_unknown_legacy_key_is_discovered(self) -> None:
+        payload = {
+            "five_hour": {"utilization": 1},
+            "seven_day": {"utilization": 2},
+            "seven_day_cowork": {"utilization": 7},
+        }
+        snapshot = parse_snapshot(payload, now=0.0, include_scoped=True)
+        self.assertIn("Week (Cowork)", [w.label for w in snapshot.windows])
+
+    def test_universal_windows_come_first(self) -> None:
+        payload = {
+            "seven_day_cowork": {"utilization": 7},
+            "seven_day": {"utilization": 2},
+            "five_hour": {"utilization": 1},
+        }
+        snapshot = parse_snapshot(payload, now=0.0, include_scoped=True)
+        self.assertEqual(
+            [w.label for w in snapshot.windows][:2],
+            ["Current Session", "Week (all)"],
+        )
+
+
+class HumanizeKindTest(unittest.TestCase):
+    def test_known_duration_prefixes(self) -> None:
+        self.assertEqual(humanize_kind("seven_day"), "Week")
+        self.assertEqual(humanize_kind("five_hour"), "Session")
+
+    def test_qualified_duration(self) -> None:
+        self.assertEqual(humanize_kind("weekly_opus"), "Week (Opus)")
+        self.assertEqual(humanize_kind("monthly_all"), "Month (All)")
+
+    def test_unrecognised_kind_is_title_cased(self) -> None:
+        self.assertEqual(humanize_kind("iguana_necktie"), "Iguana Necktie")
+
+    def test_hyphens_are_normalised(self) -> None:
+        self.assertEqual(humanize_kind("weekly-sonnet"), "Week (Sonnet)")
 
 
 if __name__ == "__main__":

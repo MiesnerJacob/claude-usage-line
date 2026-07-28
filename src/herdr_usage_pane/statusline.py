@@ -160,10 +160,17 @@ def shorten_labels(snapshot: UsageSnapshot) -> UsageSnapshot:
 
 
 def _short_label(label: str) -> str:
+    """Abbreviate any label, including window types not seen before.
+
+    A qualified label like `Week (Fable)` reduces to its qualifier, so a
+    per-model window keeps working when the model changes or a new one appears.
+    """
     if label in SHORT_LABELS:
         return SHORT_LABELS[label]
-    if label.startswith("Week (") and label.endswith(")"):
-        return label[len("Week (") : -1]
+    if label.endswith(")") and "(" in label:
+        qualifier = label[label.index("(") + 1 : -1].strip()
+        if qualifier and qualifier.lower() != "all":
+            return qualifier
     return label
 
 
