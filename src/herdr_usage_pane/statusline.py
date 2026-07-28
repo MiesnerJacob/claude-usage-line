@@ -21,7 +21,7 @@ STDIN_TIMEOUT_SECONDS = 0.15
 MAX_PAYLOAD_BYTES = 1 << 20
 CONTEXT_LABEL = "Context"
 WORKTREE_PREFIX = "wt"
-MIN_SHARED_SUFFIX = 6
+MIN_SHARED_RUN = 6
 TRANSCRIPT_TAIL_BYTES = 256 * 1024
 
 _FILE_PATH_PATTERN = re.compile(r'"file_path"\s*:\s*"([^"]+)"')
@@ -302,10 +302,10 @@ def git_label(cwd: str | None) -> str | None:
 def _names_overlap(worktree: str, branch: str) -> bool:
     """Whether the worktree directory and branch say the same thing.
 
-    Directories are conventionally named after the branch but with the repo name
-    prepended and the ref type dropped, so `mentality-ment-210-form-cancel` and
-    `feature/ment-210-form-cancel` differ at the front and agree at the back.
-    A shared suffix is therefore the signal; containment is not.
+    Directories are conventionally named after the branch, but with the repo
+    name prepended, the ref type dropped, and sometimes the slug shortened to
+    just the ticket. So the shared part can sit anywhere in either string, and
+    the signal is the longest run they have in common.
     """
     left = _alphanumeric(worktree)
     right = _alphanumeric(branch)
@@ -313,17 +313,28 @@ def _names_overlap(worktree: str, branch: str) -> bool:
         return False
     if left in right or right in left:
         return True
-    shared = _common_suffix_length(left, right)
-    return shared >= max(MIN_SHARED_SUFFIX, min(len(left), len(right)) // 2)
+    shared = _longest_common_run(left, right)
+    return shared >= max(MIN_SHARED_RUN, min(len(left), len(right)) // 3)
 
 
-def _common_suffix_length(left: str, right: str) -> int:
-    length = 0
-    for first, second in zip(reversed(left), reversed(right)):
-        if first != second:
-            break
-        length += 1
-    return length
+def _longest_common_run(left: str, right: str) -> int:
+    """Length of the longest substring shared by both names.
+
+    A suffix comparison is not enough: a directory is often named after just the
+    ticket (`mentality-ment-458`) while the branch carries a longer slug
+    (`fix/ment-458-narrow-exception-handling`), so the shared part sits in the
+    middle of one and the front of the other.
+    """
+    previous = [0] * (len(right) + 1)
+    best = 0
+    for left_index in range(1, len(left) + 1):
+        current = [0] * (len(right) + 1)
+        for right_index in range(1, len(right) + 1):
+            if left[left_index - 1] == right[right_index - 1]:
+                current[right_index] = previous[right_index - 1] + 1
+                best = max(best, current[right_index])
+        previous = current
+    return best
 
 
 def _alphanumeric(text: str) -> str:

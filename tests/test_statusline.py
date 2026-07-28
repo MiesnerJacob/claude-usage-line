@@ -12,6 +12,7 @@ from pathlib import Path
 
 from herdr_usage_pane.model import UsageSnapshot, UsageWindow
 from herdr_usage_pane.statusline import (
+    _names_overlap,
     activity_dir,
     context_segment,
     git_label,
@@ -367,6 +368,38 @@ class BranchSourceTest(unittest.TestCase):
         payload = {"cwd": str(self.main)}
         segments = info_segments(payload, branch_source="activity")
         self.assertEqual(segments[0], ("staging", "branch"))
+
+class NamesOverlapTest(unittest.TestCase):
+    """Real worktree/branch pairs, and pairs that must stay distinct."""
+
+    def test_directory_named_after_only_the_ticket(self) -> None:
+        self.assertTrue(
+            _names_overlap("mentality-ment-458", "fix/ment-458-narrow-exception-handling")
+        )
+
+    def test_directory_mirroring_the_whole_slug(self) -> None:
+        self.assertTrue(
+            _names_overlap(
+                "mentality-ment-210-form-cancel-decline",
+                "feature/ment-210-form-cancel-decline",
+            )
+        )
+
+    def test_differing_ref_type(self) -> None:
+        self.assertTrue(
+            _names_overlap(
+                "mentality-ment-402-ppt-attachment-extraction",
+                "fix/ment-402-ppt-attachment-extraction",
+            )
+        )
+
+    def test_unrelated_names_stay_distinct(self) -> None:
+        self.assertFalse(_names_overlap("scratchpad", "main"))
+        self.assertFalse(_names_overlap("experiment", "staging"))
+
+    def test_short_incidental_overlap_is_not_enough(self) -> None:
+        self.assertFalse(_names_overlap("hotfix-login", "feature/logging"))
+
 
 if __name__ == "__main__":
     unittest.main()
