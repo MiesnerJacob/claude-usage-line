@@ -4,7 +4,8 @@
   "description": "Status line showing Claude usage against rate limits, plus context, model, effort and git branch or worktree.",
   "version": "0.2.0",
   "author": {
-    "name": "Jacob Miesner"
+    "name": "Jacob Miesner",
+    "url": "https://github.com/MiesnerJacob"
   },
   "license": "MIT",
   "keywords": [
@@ -15,5 +16,7 @@
     "git",
     "worktree"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "repository": "https://github.com/MiesnerJacob/claude-usage-line",
+  "homepage": "https://github.com/MiesnerJacob/claude-usage-line#readme"
 }

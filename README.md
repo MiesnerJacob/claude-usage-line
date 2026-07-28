@@ -14,13 +14,13 @@ Python 3.10+. No dependencies, no build step.
 **1. Get it**
 
 ```sh
-/plugin install <owner>/claude-usage-line
+/plugin install MiesnerJacob/claude-usage-line
 ```
 
 Or clone it anywhere:
 
 ```sh
-git clone https://github.com/<owner>/claude-usage-line.git
+git clone https://github.com/MiesnerJacob/claude-usage-line.git
 ```
 
 **2. Point Claude Code at it**
