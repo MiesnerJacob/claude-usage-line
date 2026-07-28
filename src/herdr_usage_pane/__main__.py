@@ -17,6 +17,7 @@ from .client import UsageClient, UsageUnavailable
 from .credentials import CredentialsError, resolve_access_token
 from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
 from .render import COMPACT_WIDTH, render_line
+from .statusline import merge_scoped, read_stdin_payload, snapshot_from_payload
 from .reporter import (
     MIN_TOKEN_VERSION,
     ReporterError,
@@ -113,31 +114,51 @@ def _build_parser() -> argparse.ArgumentParser:
         help="also show per-model scoped weekly limits",
     )
     parser.add_argument(
+        "--color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help=(
+            "auto colours only on a terminal; always is for consumers that "
+            "render ANSI but are not a tty, such as a statusline"
+        ),
+    )
+    parser.add_argument(
         "--no-color",
         action="store_true",
-        help="disable ANSI colour",
+        help="shorthand for --color never",
     )
     parser.add_argument("--version", action="version", version=__version__)
     return parser
 
 
 def _render_cached(args: argparse.Namespace) -> str | None:
-    """Render straight from cache, touching no credentials and no subprocesses.
+    """Render without credentials, HTTP, or subprocesses when possible.
 
-    A statusline runs this on every redraw, so the cache-hit path must avoid
-    resolving the OAuth token (a Keychain call) and detecting the Claude Code
-    version (a subprocess) — together they cost far more than the render.
+    Two free sources, in order: the `rate_limits` Claude Code puts in the
+    statusline payload on stdin, which is always current; then the on-disk cache
+    from a previous fetch. A statusline redraws constantly, so this path must
+    avoid the Keychain lookup and the `claude --version` subprocess.
     """
     now = time.time()
-    snapshot = read_snapshot(now, args.interval)
+    cached = read_snapshot(now, args.interval)
+    snapshot = _snapshot_from_stdin(now)
+    if snapshot is not None:
+        snapshot = merge_scoped(snapshot, cached) if args.all_windows else snapshot
+    else:
+        snapshot = cached
     if snapshot is None:
         return None
     return render_line(
         snapshot,
         width=shutil.get_terminal_size((80, 1)).columns,
         now=now,
-        color=_should_colorize(args.no_color),
+        color=_should_colorize(args),
     )
+
+
+def _snapshot_from_stdin(now: float):
+    payload = read_stdin_payload()
+    return None if payload is None else snapshot_from_payload(payload, now)
 
 
 def _run_pane(poller: UsagePoller, args: argparse.Namespace) -> int:
@@ -145,7 +166,7 @@ def _run_pane(poller: UsagePoller, args: argparse.Namespace) -> int:
         poller=poller,
         options=PaneOptions(
             poll_interval=args.interval,
-            color=_should_colorize(args.no_color),
+            color=_should_colorize(args),
         ),
         stream=sys.stdout,
     )
@@ -200,9 +221,17 @@ def _probe(client: UsageClient) -> int:
     return 0
 
 
-def _should_colorize(no_color_flag: bool) -> bool:
-    if no_color_flag or os.environ.get("NO_COLOR"):
+def _should_colorize(args: argparse.Namespace) -> bool:
+    """Whether to emit ANSI.
+
+    A statusline receives stdout on a pipe, so `isatty` is false even though it
+    renders colour; `--color always` exists for exactly that case. NO_COLOR
+    always wins, per the convention.
+    """
+    if args.no_color or args.color == "never" or os.environ.get("NO_COLOR"):
         return False
+    if args.color == "always":
+        return True
     return sys.stdout.isatty()
 
 
