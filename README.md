@@ -14,9 +14,9 @@ Session █████████░░░  77% 37m │ Week █████�
 /plugin install claude-usage-line
 ```
 
-That is it. A `SessionStart` hook writes the `statusLine` entry into
-`~/.claude/settings.json` for you, and repoints it after a plugin update, since
-the plugin cache is versioned. If you already have a status line of your own, the
+That is it. A hook writes the `statusLine` entry into `~/.claude/settings.json`
+for you on session start or first prompt, and repoints it after a plugin update,
+since the plugin cache is versioned. If you already have a status line of your own, the
 hook leaves it alone — run the installer explicitly to replace it:
 
 ```sh

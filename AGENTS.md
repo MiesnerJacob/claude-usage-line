@@ -38,6 +38,16 @@ hook. It adopts the entry when there is none, repoints it when the existing one
 names our launcher (an older version's path), and leaves any other status line
 untouched. Do not replace this with a hardcoded path.
 
+## Setup fires on two events, deliberately
+
+`SessionStart` cannot configure the session you install the plugin in — it already
+began, and `/reload-plugins` does not replay the event. That is precisely the
+session where someone is looking for the status line, so setup would appear
+broken on first install.
+
+So `UserPromptSubmit` runs it too, guarded by a `grep` for our launcher in
+`settings.json` so the common path never starts Python.
+
 ## Do not declare hooks in plugin.json
 
 `hooks/hooks.json` is discovered automatically. Adding `"hooks":
