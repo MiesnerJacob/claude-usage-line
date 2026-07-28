@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 
 from .model import UsageSnapshot, UsageWindow
@@ -25,6 +28,38 @@ def cache_path() -> Path:
     base = os.environ.get("XDG_CACHE_HOME")
     root = Path(base) if base else Path.home() / ".cache"
     return root / "herdr-usage-pane" / "snapshot.json"
+
+
+def spawn_background_refresh(interval: float) -> None:
+    """Fetch a fresh snapshot in a detached process, at most once per interval.
+
+    The statusline must not block on HTTP, but a scoped window (`Week (Fable)`)
+    only exists in the API response. So a miss renders what is available now and
+    warms the cache for the next redraw. The marker file rate-limits the spawns,
+    which matters because a statusline redraws far more often than it should
+    fetch.
+    """
+    marker = cache_path().with_name("refresh.marker")
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        if marker.exists() and time.time() - marker.stat().st_mtime < interval:
+            return
+        marker.touch()
+    except OSError:
+        return
+    launcher = Path(__file__).resolve().parents[2] / "bin" / "herdr-usage-pane"
+    if not launcher.exists():
+        return
+    try:
+        subprocess.Popen(
+            [sys.executable, str(launcher), "--refresh-cache", "--all-windows"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (OSError, ValueError):
+        return
 
 
 def read_snapshot(

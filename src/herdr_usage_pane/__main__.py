@@ -12,12 +12,20 @@ from typing import Sequence
 
 from . import __version__
 from .app import PaneOptions, SidebarPublisher, UsagePane
-from .cache import read_snapshot
+from .cache import read_snapshot, spawn_background_refresh
 from .client import UsageClient, UsageUnavailable
 from .credentials import CredentialsError, resolve_access_token
 from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
 from .render import COMPACT_WIDTH, render_line
-from .statusline import merge_scoped, read_stdin_payload, snapshot_from_payload
+from .model import UsageSnapshot
+from .statusline import (
+    context_window_from_payload,
+    git_label,
+    shorten_labels,
+    merge_scoped,
+    read_stdin_payload,
+    snapshot_from_payload,
+)
 from .reporter import (
     MIN_TOKEN_VERSION,
     ReporterError,
@@ -47,6 +55,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.probe:
         return _probe(client)
+
+    if args.refresh_cache:
+        return _refresh_cache(client, args)
 
     poller = UsagePoller(client=client, poll_interval=args.interval)
     if args.once:
@@ -114,6 +125,26 @@ def _build_parser() -> argparse.ArgumentParser:
         help="also show per-model scoped weekly limits",
     )
     parser.add_argument(
+        "--branch",
+        action="store_true",
+        help="prefix the line with the git branch, or worktree:branch",
+    )
+    parser.add_argument(
+        "--context",
+        action="store_true",
+        help="also show the session's context-window usage",
+    )
+    parser.add_argument(
+        "--short-labels",
+        action="store_true",
+        help="abbreviate window labels so a one-line readout keeps its bars",
+    )
+    parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="fetch and cache a snapshot, then exit (used in the background)",
+    )
+    parser.add_argument(
         "--color",
         choices=("auto", "always", "never"),
         default="auto",
@@ -141,24 +172,40 @@ def _render_cached(args: argparse.Namespace) -> str | None:
     """
     now = time.time()
     cached = read_snapshot(now, args.interval)
-    snapshot = _snapshot_from_stdin(now)
-    if snapshot is not None:
-        snapshot = merge_scoped(snapshot, cached) if args.all_windows else snapshot
-    else:
+    payload = read_stdin_payload() or {}
+    snapshot = snapshot_from_payload(payload, now) if payload else None
+
+    if snapshot is None:
         snapshot = cached
+    elif args.all_windows:
+        snapshot = merge_scoped(snapshot, cached)
+        if cached is None:
+            spawn_background_refresh(args.interval)
     if snapshot is None:
         return None
+
+    if args.context:
+        context = context_window_from_payload(payload)
+        if context is not None:
+            snapshot = UsageSnapshot(
+                windows=(context, *snapshot.windows),
+                captured_at=snapshot.captured_at,
+            )
+    if args.short_labels:
+        snapshot = shorten_labels(snapshot)
     return render_line(
         snapshot,
         width=shutil.get_terminal_size((80, 1)).columns,
         now=now,
         color=_should_colorize(args),
+        prefix=git_label(payload.get("cwd")) if args.branch else None,
     )
 
 
-def _snapshot_from_stdin(now: float):
-    payload = read_stdin_payload()
-    return None if payload is None else snapshot_from_payload(payload, now)
+def _refresh_cache(client: UsageClient, args: argparse.Namespace) -> int:
+    """Fetch once and persist to the cache. Nothing is printed."""
+    poller = UsagePoller(client=client, poll_interval=args.interval)
+    return 0 if poller.poll_if_due() else 1
 
 
 def _run_pane(poller: UsagePoller, args: argparse.Namespace) -> int:

@@ -12,11 +12,19 @@ import json
 import os
 import select
 import sys
+from pathlib import Path
 
 from .model import UsageSnapshot, UsageWindow
 
 STDIN_TIMEOUT_SECONDS = 0.15
 MAX_PAYLOAD_BYTES = 1 << 20
+CONTEXT_LABEL = "Context"
+
+SHORT_LABELS: dict[str, str] = {
+    "Context": "Ctx",
+    "Current Session": "Session",
+    "Week (all)": "Week",
+}
 
 STDIN_WINDOW_LABELS: dict[str, str] = {
     "five_hour": "Current Session",
@@ -85,6 +93,112 @@ def merge_scoped(
     return UsageSnapshot(
         windows=snapshot.windows + extra, captured_at=snapshot.captured_at
     )
+
+
+def shorten_labels(snapshot: UsageSnapshot) -> UsageSnapshot:
+    """Abbreviate labels so a one-line statusline keeps room for bars.
+
+    On a single line the labels compete with the bars for columns, and the bars
+    carry the at-a-glance signal. `Week (Fable)` becomes `Fable`, which stays
+    unambiguous because it sits beside `Week`.
+    """
+    return UsageSnapshot(
+        windows=tuple(
+            UsageWindow(
+                label=_short_label(window.label),
+                used_percentage=window.used_percentage,
+                resets_at=window.resets_at,
+                reported_severity=window.reported_severity,
+            )
+            for window in snapshot.windows
+        ),
+        captured_at=snapshot.captured_at,
+    )
+
+
+def _short_label(label: str) -> str:
+    if label in SHORT_LABELS:
+        return SHORT_LABELS[label]
+    if label.startswith("Week (") and label.endswith(")"):
+        return label[len("Week (") : -1]
+    return label
+
+
+def context_window_from_payload(payload: dict) -> UsageWindow | None:
+    """The session's context-window fill, which the payload also carries."""
+    context = payload.get("context_window")
+    if not isinstance(context, dict):
+        return None
+    percentage = context.get("used_percentage")
+    if isinstance(percentage, bool) or not isinstance(percentage, (int, float)):
+        return None
+    return UsageWindow(label=CONTEXT_LABEL, used_percentage=float(percentage))
+
+
+def git_label(cwd: str | None) -> str | None:
+    """Branch name, or `worktree:branch` when inside a linked worktree.
+
+    Reads the git metadata directly instead of shelling out to `git`: this runs
+    on every statusline redraw, where a subprocess costs more than everything
+    else combined.
+    """
+    if not cwd:
+        return None
+    git_path = _find_git_path(Path(cwd))
+    if git_path is None:
+        return None
+    worktree = _worktree_name(git_path)
+    branch = _head_branch(git_path)
+    if branch is None:
+        return worktree
+    return f"{worktree}:{branch}" if worktree else branch
+
+
+def _find_git_path(start: Path) -> Path | None:
+    for directory in (start, *start.parents):
+        candidate = directory / ".git"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _worktree_name(git_path: Path) -> str | None:
+    """The linked-worktree name, or None in the main working tree."""
+    if git_path.is_dir():
+        return None
+    try:
+        content = git_path.read_text().strip()
+    except OSError:
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    gitdir = Path(content.split(":", 1)[1].strip())
+    return gitdir.name if gitdir.parent.name == "worktrees" else None
+
+
+def _head_branch(git_path: Path) -> str | None:
+    head = _resolve_head_file(git_path)
+    if head is None:
+        return None
+    try:
+        content = head.read_text().strip()
+    except OSError:
+        return None
+    if content.startswith("ref:"):
+        return content.split("/")[-1] or None
+    return content[:7] or None
+
+
+def _resolve_head_file(git_path: Path) -> Path | None:
+    if git_path.is_dir():
+        return git_path / "HEAD"
+    try:
+        content = git_path.read_text().strip()
+    except OSError:
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    return Path(content.split(":", 1)[1].strip()) / "HEAD"
 
 
 def _window(raw: object, label: str) -> UsageWindow | None:
