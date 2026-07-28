@@ -7,7 +7,6 @@ import unittest
 from herdr_usage_pane.model import UsageSnapshot, UsageWindow
 from herdr_usage_pane.render import (
     BAR_LAYOUT_MIN_WIDTH,
-    PANEL_TITLE,
     render_panel,
     _visible_length,
     format_duration,
@@ -170,16 +169,24 @@ class RenderPanelTest(unittest.TestCase):
             snapshot, width=width, now=0.0, color=False, **kwargs
         )  # type: ignore[arg-type]
 
-    def test_one_header_plus_one_row_per_window(self) -> None:
-        self.assertEqual(len(self._panel(60)), 4)
+    def test_one_row_per_window_and_no_title_row(self) -> None:
+        rows = self._panel(60)
+        self.assertEqual(len(rows), 3)
+        self.assertIn("Current Session", rows[0])
 
-    def test_header_carries_title_and_soonest_reset(self) -> None:
-        header = self._panel(60)[0]
-        self.assertIn(PANEL_TITLE, header)
-        self.assertIn("resets 2h26m", header)
+    def test_each_row_carries_its_own_reset_countdown(self) -> None:
+        rows = self._panel(60)
+        self.assertIn("2h26m", rows[0])
+        self.assertIn("2d7h", rows[1])
+
+    def test_single_row_height_collapses_to_one_line(self) -> None:
+        rows = self._panel(115, height=1)
+        self.assertEqual(len(rows), 1)
+        for label in ("Current Session", "Week (all)", "Week (Fable)"):
+            self.assertIn(label, rows[0])
 
     def test_labels_are_aligned_into_a_column(self) -> None:
-        rows = self._panel(60)[1:]
+        rows = self._panel(60)
         self.assertEqual(len({row.index("█") for row in rows}), 1, rows)
 
     def test_no_row_exceeds_width(self) -> None:
@@ -187,11 +194,6 @@ class RenderPanelTest(unittest.TestCase):
             with self.subTest(width=width):
                 for row in self._panel(width):
                     self.assertLessEqual(_visible_length(row), width)
-
-    def test_stale_replaces_the_reset_countdown(self) -> None:
-        header = self._panel(60, stale=True)[0]
-        self.assertIn("(stale)", header)
-        self.assertNotIn("resets", header)
 
     def test_empty_snapshot_yields_one_message_row(self) -> None:
         lines = render_panel(_snapshot(), width=60, now=0.0, color=False)

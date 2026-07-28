@@ -16,12 +16,10 @@ MAX_BAR_WIDTH = 12
 BAR_LAYOUT_MIN_WIDTH = 46
 COMPACT_WIDTH = 22
 
-PANEL_TITLE = "✳ Claude Code Usage"
 PANEL_MIN_HEIGHT = 2
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
-_BOLD = "\033[1m"
 _SEVERITY_COLORS = {
     Severity.NOMINAL: "\033[32m",
     Severity.ELEVATED: "\033[33m",
@@ -63,70 +61,80 @@ def render_panel(
     stale: bool = False,
     height: int | None = None,
 ) -> list[str]:
-    """Render a titled multi-row panel, one row per usage window.
+    """Render one row per usage window, sized to the pane.
 
-    Bars stretch to the pane width rather than being capped, since here the
-    space exists to use. When `height` cannot fit the header plus every window,
-    the header is dropped first: a truncated set of numbers is worse than a
-    missing title, because a missing row reads as a missing limit.
+    No title row: herdr already draws the pane's label on its border, so a
+    header here would repeat it. At `height == 1` the windows collapse onto a
+    single horizontal line instead of being truncated away.
     """
     if not snapshot.windows:
         return [render_message("no usage windows reported", width, color)]
+    if height is not None and height < len(snapshot.windows):
+        return _render_folded(snapshot, width, now, color, stale, height)
     label_width = max(len(window.label) for window in snapshot.windows)
+    reset_width = max(
+        len(format_duration(window.seconds_until_reset(now)))
+        for window in snapshot.windows
+    )
     rows = [
-        _render_panel_row(window, width, label_width, color)
+        _render_panel_row(window, width, label_width, reset_width, now, color)
         for window in snapshot.windows
     ]
-    if height is not None and height < len(rows) + 1:
-        return rows[:height]
-    return [_render_header(snapshot, width, now, color, stale), *rows]
+    return rows[:height] if height is not None else rows
 
 
-def _render_header(
+def _render_folded(
     snapshot: UsageSnapshot,
     width: int,
     now: float,
     color: bool,
     stale: bool,
-) -> str:
-    title = _paint(PANEL_TITLE, _BOLD, color)
-    suffix = "(stale)" if stale else _soonest_reset(snapshot, now)
-    if not suffix or _visible_length(title) + len(suffix) + 1 > width:
-        return _fit(title, width)
-    padding = width - _visible_length(title) - len(suffix)
-    return title + " " * padding + _paint(suffix, _DIM, color)
+    height: int,
+) -> list[str]:
+    """Fit every window into fewer rows than there are windows.
 
-
-def _soonest_reset(snapshot: UsageSnapshot, now: float) -> str:
-    countdowns = [
-        seconds
-        for seconds in (
-            window.seconds_until_reset(now) for window in snapshot.windows
+    Windows are folded across the available rows rather than dropped, because a
+    missing row reads as a missing limit. herdr clamps split ratios to 0.9, so a
+    pane cannot be shorter than two usable rows; folding uses both instead of
+    leaving one blank.
+    """
+    windows = list(snapshot.windows)
+    per_row = -(-len(windows) // max(1, height))
+    lines = []
+    for start in range(0, len(windows), per_row):
+        group = UsageSnapshot(
+            windows=tuple(windows[start : start + per_row]),
+            captured_at=snapshot.captured_at,
         )
-        if seconds is not None
-    ]
-    if not countdowns:
-        return ""
-    return f"resets {format_duration(min(countdowns))}"
+        lines.append(render_line(group, width, now, color, stale and not lines))
+    return lines[:height]
 
 
 def _render_panel_row(
     window: UsageWindow,
     width: int,
     label_width: int,
+    reset_width: int,
+    now: float,
     color: bool,
 ) -> str:
+    """One window as `label  bar  pct  resets`, columns aligned across rows."""
     tint = _SEVERITY_COLORS[window.severity]
     label = window.label.ljust(label_width)
     percent = f"{round(window.used_percentage):>3d}%"
-    bar = width - (label_width + 2 + len(percent) + 2)
+    countdown = format_duration(window.seconds_until_reset(now)).rjust(reset_width)
+    trailing = len(countdown) + 2 if reset_width else 0
+    bar = width - (label_width + 2 + len(percent) + 2 + trailing)
     if bar < MIN_BAR_WIDTH:
-        return _fit(f"{_paint(label, _DIM, color)} {_paint(percent, tint, color)}", width)
-    return (
+        return _fit(
+            f"{_paint(label, _DIM, color)} {_paint(percent, tint, color)}", width
+        )
+    row = (
         f"{_paint(label, _DIM, color)}  "
         f"{_render_bar(window.used_percentage, bar, tint, color)}  "
         f"{_paint(percent, tint, color)}"
     )
+    return f"{row}  {_paint(countdown, _DIM, color)}" if trailing else row
 
 
 def render_compact(

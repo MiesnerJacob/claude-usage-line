@@ -5,15 +5,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
+import time
 from typing import Sequence
 
 from . import __version__
 from .app import PaneOptions, SidebarPublisher, UsagePane
+from .cache import read_snapshot
 from .client import UsageClient, UsageUnavailable
 from .credentials import CredentialsError, resolve_access_token
 from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
-from .render import COMPACT_WIDTH
+from .render import COMPACT_WIDTH, render_line
 from .reporter import (
     MIN_TOKEN_VERSION,
     ReporterError,
@@ -28,6 +31,11 @@ from .reporter import (
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse arguments, build the requested display mode, and run it."""
     args = _build_parser().parse_args(argv)
+    if args.once and not args.report and not args.probe:
+        cached = _render_cached(args)
+        if cached is not None:
+            sys.stdout.write(cached + "\n")
+            return 0
     try:
         client = UsageClient(
             access_token=resolve_access_token(),
@@ -40,6 +48,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _probe(client)
 
     poller = UsagePoller(client=client, poll_interval=args.interval)
+    if args.once:
+        poller.prime_from_cache()
     if args.report:
         return _run_reporter(poller, args)
     return _run_pane(poller, args)
@@ -109,6 +119,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=__version__)
     return parser
+
+
+def _render_cached(args: argparse.Namespace) -> str | None:
+    """Render straight from cache, touching no credentials and no subprocesses.
+
+    A statusline runs this on every redraw, so the cache-hit path must avoid
+    resolving the OAuth token (a Keychain call) and detecting the Claude Code
+    version (a subprocess) — together they cost far more than the render.
+    """
+    now = time.time()
+    snapshot = read_snapshot(now, args.interval)
+    if snapshot is None:
+        return None
+    return render_line(
+        snapshot,
+        width=shutil.get_terminal_size((80, 1)).columns,
+        now=now,
+        color=_should_colorize(args.no_color),
+    )
 
 
 def _run_pane(poller: UsagePoller, args: argparse.Namespace) -> int:

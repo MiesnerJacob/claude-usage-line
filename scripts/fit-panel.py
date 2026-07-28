@@ -16,7 +16,9 @@ import json
 import subprocess
 import sys
 
-DEFAULT_CONTENT_ROWS = 4
+DEFAULT_CONTENT_ROWS = 2
+# Measured on a bottom split: the PTY is 3 rows shorter than the layout rect
+# (two border rows plus the gap row herdr puts above the split).
 ASSUMED_CHROME_ROWS = 3
 MAX_RATIO = 0.9
 COMMAND_TIMEOUT_SECONDS = 10.0

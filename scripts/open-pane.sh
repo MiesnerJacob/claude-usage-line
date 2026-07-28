@@ -38,5 +38,5 @@ print(pane.get("pane_id", ""))
 ')
 
 if [ -n "$pane_id" ]; then
-	python3 "$(dirname "$0")/fit-panel.py" "$pane_id" 4 >/dev/null 2>&1 || true
+	python3 "$(dirname "$0")/fit-panel.py" "$pane_id" 2 >/dev/null 2>&1 || true
 fi

@@ -104,7 +104,7 @@ class UsagePane(_InterruptibleLoop):
         if rows < PANEL_MIN_HEIGHT:
             self._write(_CLEAR_LINE + self._current_line(columns))
             return
-        self._write(_paint_rows(self._panel_lines(columns, rows)))
+        self._write(_paint_rows(self._panel_lines(columns, rows), rows))
 
     def _panel_lines(self, columns: int, rows: int) -> list[str]:
         snapshot = self._poller.snapshot
@@ -233,7 +233,7 @@ def _terminal_size(stream: TextIO) -> tuple[int, int]:
     return size.columns, size.lines
 
 
-def _paint_rows(lines: list[str]) -> str:
+def _paint_rows(lines: list[str], rows: int) -> str:
     """Redraw rows at absolute positions, clearing anything left below.
 
     Deliberately no newlines: emitting one after the last line of a full-height
@@ -243,7 +243,9 @@ def _paint_rows(lines: list[str]) -> str:
     painted = "".join(
         f"\033[{row};1H\033[2K{line}" for row, line in enumerate(lines, start=1)
     )
-    # Park the cursor at the start of the first unused row before clearing.
-    # `ED 0` erases from the cursor cell *inclusive*, so clearing while parked on
-    # the last written character silently eats it.
+    # Clear leftover rows only when there are any. `ED 0` erases from the cursor
+    # cell *inclusive*, and parking past the final row clamps back onto it, so
+    # clearing when the content fills the pane wipes the last row just drawn.
+    if len(lines) >= rows:
+        return painted
     return f"{painted}\033[{len(lines) + 1};1H{_CLEAR_BELOW}"

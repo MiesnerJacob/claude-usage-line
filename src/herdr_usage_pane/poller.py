@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from typing import Callable
 
+from .cache import read_snapshot, write_snapshot
 from .client import UsageClient, UsageUnavailable
 from .model import UsageSnapshot
 
@@ -54,6 +55,22 @@ class UsagePoller:
         age = self._clock() - self._snapshot.captured_at
         return age > self._poll_interval * STALE_AFTER_POLLS
 
+    def prime_from_cache(self, max_age: float | None = None) -> bool:
+        """Seed from the on-disk cache, deferring the next poll if it is fresh.
+
+        Short-lived invocations (the statusline calls `--once` on every redraw)
+        would otherwise hit the endpoint every time and get throttled.
+        """
+        now = self._clock()
+        cached = read_snapshot(
+            now, self._poll_interval if max_age is None else max_age
+        )
+        if cached is None:
+            return False
+        self._snapshot = cached
+        self._next_poll_at = cached.captured_at + self._poll_interval
+        return True
+
     def poll_if_due(self) -> bool:
         """Refresh when the schedule allows. Returns True on a fresh reading."""
         now = self._clock()
@@ -69,4 +86,6 @@ class UsagePoller:
         self._error = None
         self._backoff = INITIAL_BACKOFF
         self._next_poll_at = now + self._poll_interval
+        if self._snapshot is not None:
+            write_snapshot(self._snapshot)
         return True
