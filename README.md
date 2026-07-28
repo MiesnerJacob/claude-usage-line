@@ -11,13 +11,17 @@ Session █████████░░░  77% 37m │ Week █████�
 
 Python 3.10+. No dependencies, no build step.
 
-**1. Get it**
+**1. Install it**
 
-```sh
-/plugin install MiesnerJacob/claude-usage-line
+```
+/plugin marketplace add MiesnerJacob/claude-usage-line
+/plugin install claude-usage-line
 ```
 
-Or clone it anywhere:
+The first command registers the catalog; the second installs from it. You only
+add the marketplace once.
+
+Or clone it instead, if you would rather not install a plugin:
 
 ```sh
 git clone https://github.com/MiesnerJacob/claude-usage-line.git
@@ -26,7 +30,8 @@ git clone https://github.com/MiesnerJacob/claude-usage-line.git
 **2. Point Claude Code at it**
 
 ```sh
-python3 scripts/install-statusline.py
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/install-statusline.py"   # installed as a plugin
+python3 scripts/install-statusline.py                          # from a clone
 ```
 
 That writes `statusLine` into `~/.claude/settings.json` with the right absolute

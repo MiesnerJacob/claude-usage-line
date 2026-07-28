@@ -1,0 +1,15 @@
+{
+  "name": "miesnerjacob",
+  "owner": {
+    "name": "Jacob Miesner",
+    "url": "https://github.com/MiesnerJacob"
+  },
+  "description": "Plugins by Jacob Miesner.",
+  "plugins": [
+    {
+      "name": "claude-usage-line",
+      "source": "./",
+      "description": "Status line showing Claude usage against rate limits, plus context, model, effort and git branch or worktree."
+    }
+  ]
+}
