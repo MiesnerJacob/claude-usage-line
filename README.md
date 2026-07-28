@@ -10,15 +10,25 @@ Each window shows how much of the cap is consumed, as a bar and a percentage,
 with a countdown to the next reset. Colour tracks severity, using the grading
 the server itself reports rather than locally guessed thresholds.
 
-## Why a pane and not the sidebar
+## Display modes
 
-Herdr 0.7.x plugins cannot draw inside the sidebar chrome. The plugin API's
-extension points are `[[build]]`, `[[startup]]`, `[[actions]]`, `[[events]]`,
-`[[panes]]`, and `[[link_handlers]]` — panes are the only rendering surface, and
-`[ui]` in `config.toml` exposes only sidebar *width*, no content hook.
+The readout can live in three places, and the `[[startup]]` hook picks the best
+one the installed herdr supports.
 
-So the readout lives in a short split pinned along the bottom of the tab. A
-bottom-left sidebar footer would need an upstream change to herdr itself.
+**Sidebar (herdr 0.7.5+, preferred).** herdr renders named metadata tokens
+wherever your sidebar row config references them, so the readout sits in the
+left pane and costs no rows. Requires `report-metadata --token`, added in 0.7.5.
+
+**Split pane (herdr 0.7.0+).** A short split pinned along the bottom of the tab.
+Works on older herdr, but see the row floor under Known limitations.
+
+**Claude Code statusline (any herdr, or none).** `--once` prints one line and
+exits, putting the readout inside every Claude Code pane in every tab.
+
+Plugins cannot draw the sidebar chrome directly — the extension points are
+`[[build]]`, `[[startup]]`, `[[actions]]`, `[[events]]`, `[[panes]]`, and
+`[[link_handlers]]`. The sidebar mode works by *pushing data* that the user's own
+row config renders, which is why it needs no upstream change.
 
 ## Install
 
@@ -38,15 +48,48 @@ herdr plugin link .
 You must already be logged in to Claude Code (`claude`). The plugin reuses the
 OAuth token Claude Code stored; it never starts its own login flow.
 
-## Two ways to display it
+## Setting up the sidebar mode
 
-**As a herdr pane.** The `[[startup]]` hook opens it after each session restore,
-or trigger `Claude Usage: show pane` from the action menu. Note that herdr
-splits are per-tab, so this shows in one tab rather than session-wide.
+Start the background reporter — the `Claude Usage: show in sidebar` action, the
+`[[startup]]` hook, or by hand:
 
-**As a Claude Code statusline.** `--once` prints a single line and exits, which
-gets the readout inside *every* Claude Code pane in every tab, consuming no
-rows. Add to `~/.claude/settings.json`:
+```sh
+herdr-usage-pane --report
+```
+
+It publishes three tokens, so your config chooses the layout:
+
+| Token | Example |
+| --- | --- |
+| `$usage` | `5h 35% · 7d 32%` |
+| `$usage_5h` | `5h ████░░░░ 35%` |
+| `$usage_7d` | `7d ███░░░░░ 32%` |
+
+Reference them in your sidebar rows in `~/.config/herdr/config.toml`. Rows whose
+tokens are all absent are dropped, so the readout appears only on the entry that
+carries the tokens:
+
+```toml
+[ui.sidebar.agents]
+rows = [["state_icon", "workspace", "tab"], ["agent"], ["$usage"]]
+```
+
+Then `herdr server reload-config`.
+
+Placement is your choice. `[ui.sidebar.agents]` is the lower sidebar section, so
+a row there lands bottom-left; `[ui.sidebar.spaces]` is the upper section. By
+default the reporter attaches tokens to the focused *workspace*, which appears
+exactly once; use `--target pane --target-id <pane>` to attach to a single agent
+entry instead.
+
+Tokens carry a TTL (default 90s). If the reporter dies, herdr drops the row
+rather than leaving a stale number on screen.
+
+## Setting up the statusline mode
+
+`--once` prints a single line and exits, which gets the readout inside *every*
+Claude Code pane in every tab, consuming no rows. Add to
+`~/.claude/settings.json`:
 
 ```json
 {
@@ -64,7 +107,12 @@ herdr pane covers tabs running something else.
 
 | Flag | Effect |
 | --- | --- |
-| `--once` | Print one line and exit, for statuslines and scripts |
+| `--report` | Publish to herdr's sidebar instead of drawing a pane (0.7.5+) |
+| `--target` | `workspace` (default) or `pane` — which entity carries the tokens |
+| `--target-id ID` | Explicit workspace or pane id; defaults to the focused workspace |
+| `--token-width N` | Column budget for sidebar tokens (default 18) |
+| `--ttl-ms N` | How long herdr keeps a token if the reporter dies (default 90000) |
+| `--once` | Do one update and exit, for statuslines and scripts |
 | `--all-windows` | Also show per-model scoped weekly limits (e.g. `7d Fable`) |
 | `--interval SECONDS` | Seconds between polls (default 60) |
 | `--no-color` | Disable ANSI colour; `NO_COLOR` is also honoured |
@@ -93,11 +141,14 @@ to disk or passed on a command line.
 
 ## Known limitations
 
-- **Four-row floor.** herdr ignores `height` on `[[panes]]` and clamps split
-  ratios to 0.9, so the pane cannot be shrunk below roughly four rows even
-  though it draws one line. The extra rows are blank.
-- **Per-tab, not session-wide.** A herdr split belongs to its tab. Use the
-  statusline mode for coverage everywhere.
+- **Split-pane row floor.** herdr ignores `height` on `[[panes]]` and clamps
+  split ratios to 0.9, so the pane cannot be shrunk below roughly four rows even
+  though it draws one line. The sidebar mode has no such cost.
+- **Split panes are per-tab.** A herdr split belongs to its tab. The sidebar and
+  statusline modes both avoid this.
+- **Sidebar mode needs herdr 0.7.5+.** `report-metadata --token` does not exist
+  on earlier releases; `--report` refuses with a version hint rather than
+  failing obscurely.
 - **Subscription accounts only.** The endpoint serves Claude subscription plans
   (including Team). It has nothing to report for pure API-key billing.
 - **`claude.ai` does not work.** The commonly cited `claude.ai/api/oauth/usage`

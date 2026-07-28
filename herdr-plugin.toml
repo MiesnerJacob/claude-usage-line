@@ -36,12 +36,29 @@ platforms = ["linux", "macos"]
 command = ["sh", "scripts/open-pane.sh"]
 
 [[actions]]
+id = "sidebar"
+title = "Claude Usage: show in sidebar"
+description = "Publish the readout as sidebar tokens (herdr 0.7.5+); costs no rows."
+platforms = ["linux", "macos"]
+command = ["sh", "scripts/start-readout.sh"]
+
+[[actions]]
+id = "stop"
+title = "Claude Usage: stop reporter"
+description = "Stop the background reporter and clear its sidebar tokens."
+platforms = ["linux", "macos"]
+command = ["sh", "scripts/stop-reporter.sh"]
+
+[[actions]]
 id = "probe"
 title = "Claude Usage: probe endpoint"
 description = "Dump the raw usage endpoint payload for debugging schema drift."
 platforms = ["linux", "macos"]
 command = ["./bin/herdr-usage-pane", "--probe"]
 
+#
+# Prefers the sidebar on herdr 0.7.5+ and falls back to the split pane on older
+# releases, so one hook serves both without the user choosing.
 [[startup]]
 platforms = ["linux", "macos"]
-command = ["sh", "scripts/open-pane.sh"]
+command = ["sh", "scripts/start-readout.sh"]
