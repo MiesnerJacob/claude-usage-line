@@ -1,8 +1,3 @@
-"""Domain model for Claude subscription rate-limit windows.
-
-Pure data and arithmetic. Nothing here knows about HTTP or terminals.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -67,11 +62,3 @@ class UsageSnapshot:
 
     windows: tuple[UsageWindow, ...]
     captured_at: float
-
-    @property
-    def worst_severity(self) -> Severity:
-        """The most severe state across all windows, for at-a-glance colour."""
-        if not self.windows:
-            return Severity.NOMINAL
-        ranking = {Severity.NOMINAL: 0, Severity.ELEVATED: 1, Severity.CRITICAL: 2}
-        return max((w.severity for w in self.windows), key=lambda s: ranking[s])

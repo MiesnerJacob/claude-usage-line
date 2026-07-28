@@ -1,10 +1,3 @@
-"""One-shot render used when the status line payload is not enough.
-
-The status line normally renders from the JSON Claude Code sends on stdin, which
-needs no network. This path covers the rest: no payload (run by hand), or a
-per-model window that only the API knows and the cache has not got yet.
-"""
-
 from __future__ import annotations
 
 import shutil
@@ -12,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, TextIO
 
-from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
+from .poller import UsagePoller
 from .render import render_line, render_message
 
 FALLBACK_WIDTH = 80
@@ -22,7 +15,6 @@ FALLBACK_WIDTH = 80
 class LineOptions:
     """Appearance of a single rendered line."""
 
-    poll_interval: float = DEFAULT_POLL_INTERVAL
     color: bool = True
 
 

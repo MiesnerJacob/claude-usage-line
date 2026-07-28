@@ -1,5 +1,3 @@
-"""Tests for token discovery inside a credentials blob."""
-
 from __future__ import annotations
 
 import unittest

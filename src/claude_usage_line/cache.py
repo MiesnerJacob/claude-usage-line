@@ -1,12 +1,3 @@
-"""On-disk snapshot cache shared by short-lived invocations.
-
-`--once` is called by Claude Code's statusline on every redraw, which is far more
-often than the usage endpoint should be polled. Each invocation is a fresh
-process, so the freshness window has to live on disk rather than in memory.
-
-The cache is advisory: a miss or a corrupt file simply means fetching again.
-"""
-
 from __future__ import annotations
 
 import json

@@ -1,16 +1,9 @@
-"""Poll cadence and failure backoff, shared by every display mode.
-
-The endpoint is throttled, so it is polled infrequently and the last good
-reading is retained. Displays repaint faster than this polls, which is what
-keeps reset countdowns ticking without extra requests.
-"""
-
 from __future__ import annotations
 
 import time
 from typing import Callable
 
-from .cache import read_snapshot, write_snapshot
+from .cache import write_snapshot
 from .client import UsageClient, UsageUnavailable
 from .model import UsageSnapshot
 
@@ -54,22 +47,6 @@ class UsagePoller:
             return False
         age = self._clock() - self._snapshot.captured_at
         return age > self._poll_interval * STALE_AFTER_POLLS
-
-    def prime_from_cache(self, max_age: float | None = None) -> bool:
-        """Seed from the on-disk cache, deferring the next poll if it is fresh.
-
-        Short-lived invocations (the statusline calls `--once` on every redraw)
-        would otherwise hit the endpoint every time and get throttled.
-        """
-        now = self._clock()
-        cached = read_snapshot(
-            now, self._poll_interval if max_age is None else max_age
-        )
-        if cached is None:
-            return False
-        self._snapshot = cached
-        self._next_poll_at = cached.captured_at + self._poll_interval
-        return True
 
     def poll_if_due(self) -> bool:
         """Refresh when the schedule allows. Returns True on a fresh reading."""

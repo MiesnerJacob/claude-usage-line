@@ -1,10 +1,3 @@
-"""Render a usage snapshot as one condensed terminal line.
-
-Every renderer here is width-budgeted: the layout degrades from bars to
-percentages to bare numbers rather than wrapping, because a status line that
-wraps costs a row it was not given.
-"""
-
 from __future__ import annotations
 
 from .model import Severity, UsageSnapshot, UsageWindow
@@ -43,18 +36,10 @@ def render_line(
     now: float,
     color: bool = True,
     stale: bool = False,
-    prefix: str | None = None,
 ) -> str:
-    """Render a snapshot to a single line no wider than `width` columns.
-
-    `prefix` is unmetered context shown ahead of the windows, such as a git
-    branch. It is charged against the width budget so the bars shrink to make
-    room rather than the line overflowing.
-    """
+    """Render a snapshot to a single line no wider than `width` columns."""
     if not snapshot.windows:
         return render_message("no usage windows reported", width, color)
-    lead = f"{_paint(prefix, _DIM, color)}{SEPARATOR}" if prefix else ""
-    width -= _visible_length(lead)
     bar_width = _bar_width(width, snapshot.windows, now)
     segments = [
         _render_window(window, bar_width, now, color)
@@ -63,7 +48,7 @@ def render_line(
     line = SEPARATOR.join(segments)
     if stale:
         line = f"{line} {_paint('(stale)', _DIM, color)}"
-    return lead + _fit(line, width)
+    return _fit(line, width)
 
 
 def render_info_row(

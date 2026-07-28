@@ -1,8 +1,3 @@
-"""Tests for reading usage from the statusline payload.
-
-The payload shape here was captured from Claude Code 2.1.220.
-"""
-
 from __future__ import annotations
 
 import json
@@ -15,12 +10,18 @@ from claude_usage_line.statusline import (
     _names_overlap,
     activity_dir,
     context_segment,
-    git_label,
+    git_context,
     info_segments,
     merge_scoped,
     shorten_labels,
     snapshot_from_payload,
 )
+
+def _label(cwd):
+    """The branch label alone, discarding the worktree flag."""
+    context = git_context(cwd)
+    return None if context is None else context[0]
+
 
 LIVE_PAYLOAD = {
     "session_id": "f4895cc0",
@@ -183,15 +184,15 @@ class GitLabelTest(unittest.TestCase):
         return tree
 
     def test_main_repo_shows_the_branch(self) -> None:
-        self.assertEqual(git_label(str(self._main_repo())), "staging")
+        self.assertEqual(_label(str(self._main_repo())), "staging")
 
     def test_branch_keeps_its_full_path(self) -> None:
         repo = self._main_repo("refs/heads/feature/ment-210-form-cancel")
-        self.assertEqual(git_label(str(repo)), "feature/ment-210-form-cancel")
+        self.assertEqual(_label(str(repo)), "feature/ment-210-form-cancel")
 
     def test_worktree_is_marked(self) -> None:
         tree = self._worktree("project-ment-210", "refs/heads/feature/ment-210")
-        self.assertEqual(git_label(str(tree)), "[feature/ment-210]")
+        self.assertEqual(_label(str(tree)), "[feature/ment-210]")
 
     def test_redundant_worktree_name_is_dropped(self) -> None:
         tree = self._worktree(
@@ -199,29 +200,29 @@ class GitLabelTest(unittest.TestCase):
             "refs/heads/fix/ment-402-ppt-attachment-extraction",
         )
         self.assertEqual(
-            git_label(str(tree)), "[fix/ment-402-ppt-attachment-extraction]"
+            _label(str(tree)), "[fix/ment-402-ppt-attachment-extraction]"
         )
 
     def test_distinct_worktree_name_is_kept(self) -> None:
         tree = self._worktree("scratchpad", "refs/heads/main")
-        self.assertEqual(git_label(str(tree)), "[scratchpad:main]")
+        self.assertEqual(_label(str(tree)), "[scratchpad:main]")
 
     def test_detached_head_shows_a_short_sha(self) -> None:
         repo = self._main_repo()
         (repo / ".git" / "HEAD").write_text("a08b1ab3c4d5e6f7\n")
-        self.assertEqual(git_label(str(repo)), "a08b1ab")
+        self.assertEqual(_label(str(repo)), "a08b1ab")
 
     def test_walks_up_to_the_repo_root(self) -> None:
         repo = self._main_repo()
         nested = repo / "src" / "deep"
         nested.mkdir(parents=True)
-        self.assertEqual(git_label(str(nested)), "staging")
+        self.assertEqual(_label(str(nested)), "staging")
 
     def test_outside_a_repo_is_none(self) -> None:
-        self.assertIsNone(git_label(str(self.root)))
+        self.assertIsNone(_label(str(self.root)))
 
     def test_no_cwd_is_none(self) -> None:
-        self.assertIsNone(git_label(None))
+        self.assertIsNone(_label(None))
 
 
 class ContextSegmentTest(unittest.TestCase):

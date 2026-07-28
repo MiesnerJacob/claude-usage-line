@@ -1,14 +1,3 @@
-"""Read subscription usage from Claude's OAuth usage endpoint.
-
-The endpoint requires a `claude-code/<version>` User-Agent. Without it, requests
-land in an aggressively throttled bucket and return persistent 429s, so the
-header is treated as mandatory rather than cosmetic.
-
-Response field names have shifted between Claude Code releases, so the parser
-discovers whichever spelling is present instead of hard-coding one shape. Use
-`fetch_raw` (exposed as `--probe`) to inspect the live payload.
-"""
-
 from __future__ import annotations
 
 import datetime as dt
@@ -105,7 +94,11 @@ class UsageClient:
 
 
 def default_user_agent() -> str:
-    """Build the required User-Agent, detecting the installed Claude Code."""
+    """Build the required User-Agent, detecting the installed Claude Code.
+
+    The `claude-code/<version>` form is mandatory, not cosmetic: without it the
+    request lands in an aggressively throttled bucket and returns 429s.
+    """
     return f"claude-code/{_detect_claude_code_version()}"
 
 

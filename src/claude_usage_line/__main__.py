@@ -1,5 +1,3 @@
-"""Command-line entry point for the Claude usage status line."""
-
 from __future__ import annotations
 
 import argparse
@@ -24,7 +22,6 @@ from .model import UsageSnapshot
 from .statusline import (
     context_window_from_payload,
     context_segment,
-    git_label,
     info_segments,
     shorten_labels,
     merge_scoped,
@@ -56,8 +53,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _refresh_cache(client, args)
 
     poller = UsagePoller(client=client, poll_interval=args.interval)
-    if args.once:
-        poller.prime_from_cache()
     return _run_line(poller, args)
 
 
@@ -87,11 +82,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--all-windows",
         action="store_true",
         help="also show per-model scoped weekly limits",
-    )
-    parser.add_argument(
-        "--branch",
-        action="store_true",
-        help="prefix the line with the git branch, or worktree:branch",
     )
     parser.add_argument(
         "--context",
@@ -195,7 +185,6 @@ def _render_cached(args: argparse.Namespace) -> str | None:
         width=width,
         now=now,
         color=color,
-        prefix=git_label(payload.get("cwd")) if args.branch else None,
     )
     if not args.info_row:
         return bars
@@ -221,9 +210,7 @@ def _refresh_cache(client: UsageClient, args: argparse.Namespace) -> int:
 def _run_line(poller: UsagePoller, args: argparse.Namespace) -> int:
     line = UsageLine(
         poller=poller,
-        options=LineOptions(
-            poll_interval=args.interval, color=_should_colorize(args)
-        ),
+        options=LineOptions(color=_should_colorize(args)),
         stream=sys.stdout,
     )
     return line.run_once()

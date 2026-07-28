@@ -1,11 +1,3 @@
-"""Locate the Claude Code OAuth access token already stored on this machine.
-
-The plugin never authenticates on its own behalf. It reuses the token Claude
-Code wrote when the user logged in, reading the same three locations Claude Code
-itself supports. The file is tried before the Keychain so that the common case
-does not raise an interactive Keychain prompt.
-"""
-
 from __future__ import annotations
 
 import json
@@ -26,6 +18,10 @@ class CredentialsError(RuntimeError):
 
 def resolve_access_token() -> str:
     """Return the first access token found, preferring the cheapest source.
+
+    The file is read before the Keychain so the common case does not raise an
+    interactive Keychain prompt. No login flow is ever started; this only reuses
+    what Claude Code already stored.
 
     Raises CredentialsError with remediation guidance when every source fails.
     """

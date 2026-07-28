@@ -1,9 +1,3 @@
-"""Tests for parsing the usage endpoint payload.
-
-The parser is deliberately tolerant of field-name drift, so these tests pin the
-spellings that must keep working rather than one canonical shape.
-"""
-
 from __future__ import annotations
 
 import datetime as dt

@@ -1,5 +1,3 @@
-"""Tests for the condensed single-line renderer."""
-
 from __future__ import annotations
 
 import unittest

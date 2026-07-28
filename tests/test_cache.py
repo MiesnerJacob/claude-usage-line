@@ -1,5 +1,3 @@
-"""Tests for the on-disk snapshot cache."""
-
 from __future__ import annotations
 
 import os

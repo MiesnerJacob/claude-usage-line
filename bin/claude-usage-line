@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""Launcher that runs the package straight from the plugin checkout.
-
-Herdr invokes plugin commands with the plugin root as the working directory, but
-this resolves paths relative to the script so the launcher also works when
-called by absolute path from a statusline or shell.
-"""
-
 import sys
 from pathlib import Path
 

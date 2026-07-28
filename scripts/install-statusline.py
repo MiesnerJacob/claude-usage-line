@@ -1,14 +1,3 @@
-"""Add or update this readout as Claude Code's status line.
-
-A plugin cannot set `statusLine` itself -- plugin `settings.json` supports only
-the `agent` and `subagentStatusLine` keys -- so the entry has to be written into
-the user's own settings. This resolves the readout's absolute path from its own
-location, which is what makes the plugin installable anywhere.
-
-Idempotent: rerunning updates the command in place. The previous value is kept in
-`_statusLineReplacedByClaudeUsageLine` on first write so nothing is lost.
-"""
-
 from __future__ import annotations
 
 import argparse

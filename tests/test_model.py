@@ -1,5 +1,3 @@
-"""Tests for the usage domain model."""
-
 from __future__ import annotations
 
 import unittest
@@ -37,19 +35,6 @@ class UsageWindowTest(unittest.TestCase):
 
     def test_seconds_until_reset_unknown(self) -> None:
         self.assertIsNone(UsageWindow("5h", 10.0).seconds_until_reset(now=1))
-
-
-class UsageSnapshotTest(unittest.TestCase):
-    def test_worst_severity_picks_most_severe(self) -> None:
-        snapshot = UsageSnapshot(
-            windows=(UsageWindow("5h", 10.0), UsageWindow("7d", 92.0)),
-            captured_at=0.0,
-        )
-        self.assertEqual(snapshot.worst_severity, Severity.CRITICAL)
-
-    def test_worst_severity_of_empty_snapshot_is_nominal(self) -> None:
-        snapshot = UsageSnapshot(windows=(), captured_at=0.0)
-        self.assertEqual(snapshot.worst_severity, Severity.NOMINAL)
 
 
 if __name__ == "__main__":

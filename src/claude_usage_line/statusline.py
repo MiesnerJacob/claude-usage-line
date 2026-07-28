@@ -1,11 +1,3 @@
-"""Read usage straight from the JSON Claude Code hands a statusline on stdin.
-
-Claude Code includes a `rate_limits` object in the statusline payload, so in that
-mode the numbers are free: no OAuth token, no HTTP request, no cache, and never
-stale. It carries only the session and all-model weekly windows, so a per-model
-scoped window (`Week (Fable)`) still has to come from the cached API snapshot.
-"""
-
 from __future__ import annotations
 
 import json
@@ -65,7 +57,12 @@ def read_stdin_payload(timeout: float = STDIN_TIMEOUT_SECONDS) -> dict | None:
 
 
 def snapshot_from_payload(payload: dict, now: float) -> UsageSnapshot | None:
-    """Build a snapshot from a statusline payload's `rate_limits`."""
+    """Build a snapshot from a statusline payload's `rate_limits`.
+
+    Claude Code puts these numbers in the payload it sends on stdin, so they cost
+    no token, no request, and are never stale. Only the session and all-model
+    weekly windows are present; per-model windows come from the cached API.
+    """
     limits = payload.get("rate_limits")
     if not isinstance(limits, dict):
         return None
@@ -297,12 +294,6 @@ def git_context(cwd: str | None) -> tuple[str, bool] | None:
     if _names_overlap(worktree, branch):
         return (f"[{branch}]", True)
     return (f"[{worktree}:{branch}]", True)
-
-
-def git_label(cwd: str | None) -> str | None:
-    """Just the branch label, without the worktree flag."""
-    context = git_context(cwd)
-    return None if context is None else context[0]
 
 
 def _names_overlap(worktree: str, branch: str) -> bool:

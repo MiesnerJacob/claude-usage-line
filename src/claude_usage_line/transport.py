@@ -1,15 +1,3 @@
-"""HTTPS GET with a trust-store fallback.
-
-python.org framework builds of Python on macOS ship without a CA bundle unless
-the user runs Install Certificates.command, so urllib raises a certificate
-verification error on an otherwise healthy machine. curl links against the
-system trust store and succeeds there, so it is used as a fallback. Verification
-is never disabled.
-
-Credentials are handed to curl through a config file on stdin rather than argv,
-so the access token does not appear in the process list.
-"""
-
 from __future__ import annotations
 
 import os
@@ -34,7 +22,13 @@ class HttpError(TransportError):
 
 
 def get_bytes(url: str, headers: dict[str, str], timeout: float) -> bytes:
-    """Fetch a URL, falling back to curl when the local trust store is unusable."""
+    """Fetch a URL, falling back to curl when the local trust store is unusable.
+
+    python.org framework builds on macOS ship without a CA bundle unless the user
+    runs Install Certificates.command, so urllib fails verification on an
+    otherwise healthy machine. curl links the system trust store and succeeds.
+    Verification is never disabled.
+    """
     try:
         return _get_via_urllib(url, headers, timeout)
     except ssl.SSLCertVerificationError:
