@@ -64,7 +64,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--once",
         action="store_true",
-        help="do one update and exit, for statuslines and scripts",
+        help="accepted for compatibility; rendering one line and exiting is the only mode",
     )
     parser.add_argument(
         "--probe",
@@ -137,11 +137,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "auto colours only on a terminal; always is for consumers that "
             "render ANSI but are not a tty, such as a statusline"
         ),
-    )
-    parser.add_argument(
-        "--no-color",
-        action="store_true",
-        help="shorthand for --color never",
     )
     parser.add_argument("--version", action="version", version=__version__)
     return parser
@@ -233,7 +228,7 @@ def _should_colorize(args: argparse.Namespace) -> bool:
     renders colour; `--color always` exists for exactly that case. NO_COLOR
     always wins, per the convention.
     """
-    if args.no_color or args.color == "never" or os.environ.get("NO_COLOR"):
+    if args.color == "never" or os.environ.get("NO_COLOR"):
         return False
     if args.color == "always":
         return True

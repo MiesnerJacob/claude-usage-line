@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 DEFAULT_FLAGS = [
-    "--once",
     "--all-windows",
     "--context",
     "count",
