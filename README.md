@@ -9,42 +9,24 @@ Session █████████░░░  77% 37m │ Week █████�
 
 ## Setup
 
-Python 3.10+. No dependencies, no build step.
-
-**1. Install it**
-
 ```
 /plugin marketplace add MiesnerJacob/claude-usage-line
 /plugin install claude-usage-line
 ```
 
-The first command registers the catalog; the second installs from it. You only
-add the marketplace once.
-
-Or clone it instead, if you would rather not install a plugin:
-
-```sh
-git clone https://github.com/MiesnerJacob/claude-usage-line.git
-```
-
-**2. Point Claude Code at it**
+That is it. A `SessionStart` hook writes the `statusLine` entry into
+`~/.claude/settings.json` for you, and repoints it after a plugin update, since
+the plugin cache is versioned. If you already have a status line of your own, the
+hook leaves it alone — run the installer explicitly to replace it:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/install-statusline.py"   # installed as a plugin
-python3 scripts/install-statusline.py                          # from a clone
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/install-statusline.py"
 ```
 
-That writes `statusLine` into `~/.claude/settings.json` with the right absolute
-path. Rerunning is safe, any previous command is kept under
-`_statusLineReplacedByClaudeUsageLine`, and invalid JSON is left alone. Add
-`--dry-run` to see the command first, or pass extra flags to append them.
+Requires Python 3.10+. No dependencies, no build step.
 
-A plugin cannot set `statusLine` itself — plugin settings support only `agent`
-and `subagentStatusLine` — which is why this step exists.
-
-**3. Start a new session**
-
-The command is read at session start.
+To customise, add flags to the `statusLine` command in
+`~/.claude/settings.json`, or pass them to the installer to have it write them.
 
 ## Options
 

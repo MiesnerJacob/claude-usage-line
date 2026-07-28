@@ -14,8 +14,9 @@ own settings once.
 
 ## Install
 
-Run the installer. It resolves its own absolute path, so it works wherever the
-plugin is installed:
+Setup is automatic: a `SessionStart` hook adopts the status line on first run and
+repoints it after a plugin update. Run the installer explicitly only to replace a
+status line the user already had, or to bake in different flags:
 
 ```sh
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/install-statusline.py"

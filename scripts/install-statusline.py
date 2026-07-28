@@ -17,6 +17,7 @@ DEFAULT_FLAGS = [
     "always",
 ]
 BACKUP_KEY = "_statusLineReplacedByClaudeUsageLine"
+LAUNCHER_NAME = "claude-usage-line"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,12 +36,21 @@ def main(argv: list[str] | None = None) -> int:
     command = " ".join([str(launcher), *DEFAULT_FLAGS, *args.extra])
     existing = settings.get("statusLine")
     if isinstance(existing, dict) and existing.get("command") == command:
-        print("status line already configured")
+        if not args.auto:
+            print("status line already configured")
+        return 0
+    if args.auto and not _is_ours(existing):
+        # Someone else's status line, or one the user hand-wrote. Leave it.
         return 0
     if isinstance(existing, dict) and BACKUP_KEY not in settings:
         previous = existing.get("command")
         if isinstance(previous, str) and previous:
             settings[BACKUP_KEY] = previous
+
+    if args.auto and isinstance(existing, dict):
+        # Refreshing our own entry, most likely a path from an older plugin
+        # version. Do not record it as a "previous" command worth restoring.
+        settings.pop(BACKUP_KEY, None)
 
     if args.dry_run:
         print(f"would set statusLine.command to:\n  {command}")
@@ -48,8 +58,24 @@ def main(argv: list[str] | None = None) -> int:
 
     settings["statusLine"] = {"type": "command", "command": command, "padding": 0}
     _save(settings_path, settings)
-    print(f"status line set in {settings_path}\n  {command}")
+    if not args.auto:
+        print(f"status line set in {settings_path}\n  {command}")
     return 0
+
+
+def _is_ours(existing: object) -> bool:
+    """Whether an existing statusLine entry is one we wrote.
+
+    The plugin cache is versioned, so our own command from an older version
+    carries a stale path. Matching on the launcher name lets the hook repoint it
+    after an update while never touching a status line somebody else set up.
+    """
+    if existing is None:
+        return True
+    if not isinstance(existing, dict):
+        return False
+    command = existing.get("command")
+    return isinstance(command, str) and LAUNCHER_NAME in command
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -61,6 +87,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--settings",
         default="~/.claude/settings.json",
         help="settings file to modify (default: ~/.claude/settings.json)",
+    )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="used by the SessionStart hook: adopt or refresh only our own entry",
     )
     parser.add_argument(
         "--dry-run",

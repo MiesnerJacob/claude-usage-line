@@ -25,6 +25,19 @@ accurate but irrelevant here: `CLAUDE.md` exists for people working on this
 repository, not as context shipped to plugin users. Do not delete it to silence
 the warning. Any *other* warning is a real one.
 
+## The plugin cache is versioned
+
+An installed plugin lives at
+`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. Writing that path
+into `settings.json` means the next `/plugin update` leaves the status line
+pointing at a directory that no longer exists — and a broken command renders as a
+blank row with no error.
+
+That is why `scripts/install-statusline.py --auto` runs from a `SessionStart`
+hook. It adopts the entry when there is none, repoints it when the existing one
+names our launcher (an older version's path), and leaves any other status line
+untouched. Do not replace this with a hardcoded path.
+
 ## Status line constraints
 
 - **A status line is a pipe, not a tty.** `isatty()` is false, so `--color always`
@@ -32,7 +45,9 @@ the warning. Any *other* warning is a real one.
 - **Failure is silent.** A missing file, a non-zero exit, or an exception renders
   as a blank row with no error anywhere. When something "doesn't work", run the
   configured command by hand first.
-- **The command is read at session start.** Config changes need a new session.
+- **The command is re-read on every render**, not cached at session start, so an
+  edit to `settings.json` takes effect within seconds. The *plugin* is what needs
+  a reload.
 - **`COLUMNS` and `LINES` are set** by Claude Code before running the command
   (v2.1.153+), which is why `shutil.get_terminal_size()` works despite the pipe.
 - **Terminal rows are atomic.** `--row-gap` is whole rows; there is no half row.
