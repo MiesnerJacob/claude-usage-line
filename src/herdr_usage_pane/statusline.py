@@ -19,6 +19,8 @@ from .model import UsageSnapshot, UsageWindow
 STDIN_TIMEOUT_SECONDS = 0.15
 MAX_PAYLOAD_BYTES = 1 << 20
 CONTEXT_LABEL = "Context"
+WORKTREE_PREFIX = "wt"
+MIN_SHARED_SUFFIX = 6
 
 SHORT_LABELS: dict[str, str] = {
     "Context": "Ctx",
@@ -199,9 +201,44 @@ def git_label(cwd: str | None) -> str | None:
         return None
     worktree = _worktree_name(git_path)
     branch = _head_branch(git_path)
+    if worktree is None:
+        return branch
     if branch is None:
-        return worktree
-    return f"{worktree}:{branch}" if worktree else branch
+        return f"{WORKTREE_PREFIX} {worktree}"
+    if _names_overlap(worktree, branch):
+        return f"{WORKTREE_PREFIX} {branch}"
+    return f"{WORKTREE_PREFIX} {worktree}:{branch}"
+
+
+def _names_overlap(worktree: str, branch: str) -> bool:
+    """Whether the worktree directory and branch say the same thing.
+
+    Directories are conventionally named after the branch but with the repo name
+    prepended and the ref type dropped, so `mentality-ment-210-form-cancel` and
+    `feature/ment-210-form-cancel` differ at the front and agree at the back.
+    A shared suffix is therefore the signal; containment is not.
+    """
+    left = _alphanumeric(worktree)
+    right = _alphanumeric(branch)
+    if not left or not right:
+        return False
+    if left in right or right in left:
+        return True
+    shared = _common_suffix_length(left, right)
+    return shared >= max(MIN_SHARED_SUFFIX, min(len(left), len(right)) // 2)
+
+
+def _common_suffix_length(left: str, right: str) -> int:
+    length = 0
+    for first, second in zip(reversed(left), reversed(right)):
+        if first != second:
+            break
+        length += 1
+    return length
+
+
+def _alphanumeric(text: str) -> str:
+    return "".join(character for character in text.lower() if character.isalnum())
 
 
 def _find_git_path(start: Path) -> Path | None:
@@ -235,7 +272,14 @@ def _head_branch(git_path: Path) -> str | None:
     except OSError:
         return None
     if content.startswith("ref:"):
-        return content.split("/")[-1] or None
+        ref = content.split(":", 1)[1].strip()
+        # Keep the full branch name: `refs/heads/feature/x` is the branch
+        # `feature/x`, and taking only the last segment loses the prefix that
+        # distinguishes feature/x from fix/x.
+        for prefix in ("refs/heads/", "refs/remotes/"):
+            if ref.startswith(prefix):
+                return ref[len(prefix) :] or None
+        return ref or None
     return content[:7] or None
 
 

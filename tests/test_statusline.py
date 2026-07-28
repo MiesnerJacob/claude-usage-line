@@ -5,10 +5,13 @@ The payload shape here was captured from Claude Code 2.1.220.
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from herdr_usage_pane.model import UsageSnapshot, UsageWindow
 from herdr_usage_pane.statusline import (
+    git_label,
     info_segments,
     merge_scoped,
     shorten_labels,
@@ -147,6 +150,74 @@ class ShortenLabelsTest(unittest.TestCase):
             windows=(UsageWindow("Something Else", 1.0),), captured_at=0.0
         )
         self.assertEqual(shorten_labels(snapshot).windows[0].label, "Something Else")
+
+
+class GitLabelTest(unittest.TestCase):
+    """Worktree and branch resolution, read from .git without a subprocess."""
+
+    def setUp(self) -> None:
+        self._directory = tempfile.TemporaryDirectory()
+        self.root = Path(self._directory.name)
+
+    def tearDown(self) -> None:
+        self._directory.cleanup()
+
+    def _main_repo(self, branch: str = "refs/heads/staging") -> Path:
+        repo = self.root / "project"
+        (repo / ".git").mkdir(parents=True)
+        (repo / ".git" / "HEAD").write_text(f"ref: {branch}\n")
+        return repo
+
+    def _worktree(self, name: str, branch: str) -> Path:
+        repo = self._main_repo()
+        gitdir = repo / ".git" / "worktrees" / name
+        gitdir.mkdir(parents=True)
+        gitdir.joinpath("HEAD").write_text(f"ref: {branch}\n")
+        tree = self.root / name
+        tree.mkdir()
+        tree.joinpath(".git").write_text(f"gitdir: {gitdir}\n")
+        return tree
+
+    def test_main_repo_shows_the_branch(self) -> None:
+        self.assertEqual(git_label(str(self._main_repo())), "staging")
+
+    def test_branch_keeps_its_full_path(self) -> None:
+        repo = self._main_repo("refs/heads/feature/ment-210-form-cancel")
+        self.assertEqual(git_label(str(repo)), "feature/ment-210-form-cancel")
+
+    def test_worktree_is_marked(self) -> None:
+        tree = self._worktree("project-ment-210", "refs/heads/feature/ment-210")
+        self.assertEqual(git_label(str(tree)), "wt feature/ment-210")
+
+    def test_redundant_worktree_name_is_dropped(self) -> None:
+        tree = self._worktree(
+            "project-ment-402-ppt-attachment-extraction",
+            "refs/heads/fix/ment-402-ppt-attachment-extraction",
+        )
+        self.assertEqual(
+            git_label(str(tree)), "wt fix/ment-402-ppt-attachment-extraction"
+        )
+
+    def test_distinct_worktree_name_is_kept(self) -> None:
+        tree = self._worktree("scratchpad", "refs/heads/main")
+        self.assertEqual(git_label(str(tree)), "wt scratchpad:main")
+
+    def test_detached_head_shows_a_short_sha(self) -> None:
+        repo = self._main_repo()
+        (repo / ".git" / "HEAD").write_text("a08b1ab3c4d5e6f7\n")
+        self.assertEqual(git_label(str(repo)), "a08b1ab")
+
+    def test_walks_up_to_the_repo_root(self) -> None:
+        repo = self._main_repo()
+        nested = repo / "src" / "deep"
+        nested.mkdir(parents=True)
+        self.assertEqual(git_label(str(nested)), "staging")
+
+    def test_outside_a_repo_is_none(self) -> None:
+        self.assertIsNone(git_label(str(self.root)))
+
+    def test_no_cwd_is_none(self) -> None:
+        self.assertIsNone(git_label(None))
 
 if __name__ == "__main__":
     unittest.main()

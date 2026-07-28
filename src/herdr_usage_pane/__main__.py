@@ -11,6 +11,10 @@ import time
 from typing import Sequence
 
 from . import __version__
+
+# U+2800 BRAILLE PATTERN BLANK: renders as empty space but is not whitespace, so
+# a consumer that trims blank lines still treats the gap row as content.
+GAP_ROW = "\u2800"
 from .app import PaneOptions, SidebarPublisher, UsagePane
 from .cache import read_snapshot, spawn_background_refresh
 from .client import UsageClient, UsageUnavailable
@@ -220,9 +224,7 @@ def _render_cached(args: argparse.Namespace) -> str | None:
     info = render_info_row(info_segments(payload), width, color)
     if not info:
         return bars
-    # A space, not an empty string: a bare blank line risks being trimmed before
-    # it becomes a row, and the point of the gap is that it occupies one.
-    gap = "\n".join(" " for _ in range(max(0, args.row_gap)))
+    gap = "\n".join(GAP_ROW for _ in range(max(0, args.row_gap)))
     return f"{info}\n{gap}\n{bars}" if gap else f"{info}\n{bars}"
 
 
