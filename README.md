@@ -12,21 +12,41 @@ Session █████████░░░  77% 37m │ Week █████�
 ```
 /plugin marketplace add MiesnerJacob/claude-usage-line
 /plugin install claude-usage-line
+/reload-plugins
 ```
 
-That is it. A hook writes the `statusLine` entry into `~/.claude/settings.json`
-for you on session start or first prompt, and repoints it after a plugin update,
-since the plugin cache is versioned. If you already have a status line of your own, the
-hook leaves it alone — run the installer explicitly to replace it:
+Then send any message. **The row appears on your first prompt, not on install** —
+a hook has to fire before it can configure anything.
+
+Requires Python 3.10+ on `PATH`. No dependencies, no build step.
+
+### What it changes
+
+A hook adds a `statusLine` entry to your `~/.claude/settings.json`, and repoints
+it after a plugin update, since the plugin cache is versioned. It only takes the
+slot if it is empty or already holds this plugin's command — a status line you
+configured yourself is left alone. To replace one anyway:
 
 ```sh
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/install-statusline.py"
 ```
 
-Requires Python 3.10+. No dependencies, no build step.
+That keeps your previous command under `_statusLineReplacedByClaudeUsageLine`.
 
-To customise, add flags to the `statusLine` command in
-`~/.claude/settings.json`, or pass them to the installer to have it write them.
+### If the row stays blank
+
+A failing status line command renders as an empty row with no error, so check in
+this order:
+
+1. `python3 --version` — 3.10+ and on `PATH`.
+2. `claude plugin list` — the plugin should be `✔ enabled`, not `✘ failed to load`.
+3. `grep statusLine ~/.claude/settings.json` — the entry should be there.
+4. Run the command from that entry by hand and read the error.
+
+The `/usage-line` skill covers the same ground if you would rather ask Claude.
+
+To customise, add flags to the `statusLine` command in `~/.claude/settings.json`,
+or pass them to the installer to have it write them.
 
 ## Options
 
