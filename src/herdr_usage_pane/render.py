@@ -20,6 +20,15 @@ PANEL_MIN_HEIGHT = 2
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
+_CYAN = "\033[36m"
+_GREEN = "\033[32m"
+_RED = "\033[31m"
+_INFO_STYLES = {
+    "branch": _CYAN,
+    "dim": _DIM,
+    "added": _GREEN,
+    "removed": _RED,
+}
 _SEVERITY_COLORS = {
     Severity.NOMINAL: "\033[32m",
     Severity.ELEVATED: "\033[33m",
@@ -54,6 +63,28 @@ def render_line(
     if stale:
         line = f"{line} {_paint('(stale)', _DIM, color)}"
     return lead + _fit(line, width)
+
+
+def render_info_row(
+    segments: list[tuple[str, str]],
+    width: int,
+    color: bool = True,
+) -> str:
+    """Render (text, style) pairs as one dim context row above the bars.
+
+    Adjacent line counts are joined with a space rather than the separator, so
+    `+120 -8` reads as one figure instead of two unrelated facts.
+    """
+    if not segments:
+        return ""
+    rendered: list[str] = []
+    for text, style in segments:
+        painted = _paint(text, _INFO_STYLES.get(style, _DIM), color)
+        if style == "removed" and rendered:
+            rendered[-1] = f"{rendered[-1]} {painted}"
+        else:
+            rendered.append(painted)
+    return _fit(SEPARATOR.join(rendered), width)
 
 
 def render_message(text: str, width: int, color: bool = True) -> str:

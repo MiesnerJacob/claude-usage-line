@@ -95,6 +95,49 @@ def merge_scoped(
     )
 
 
+def info_segments(payload: dict) -> list[tuple[str, str]]:
+    """Session context for the row above the bars, as (text, style) pairs.
+
+    Styles are names, not escape codes, so this stays a payload reader and the
+    renderer keeps sole responsibility for ANSI.
+
+    Line counts are the session totals the payload provides, not a per-branch
+    diff: scoping them to the branch would need a `git diff` against a base ref
+    that cannot be inferred reliably, and a subprocess on every redraw.
+    """
+    segments: list[tuple[str, str]] = []
+    branch = git_label(payload.get("cwd"))
+    if branch:
+        segments.append((branch, "branch"))
+    model = _nested_str(payload, "model", "display_name")
+    if model:
+        segments.append((model, "dim"))
+    effort = _nested_str(payload, "effort", "level")
+    if effort:
+        segments.append((f"effort {effort}", "dim"))
+    segments.extend(_line_count_segments(payload))
+    return segments
+
+
+def _line_count_segments(payload: dict) -> list[tuple[str, str]]:
+    cost = payload.get("cost")
+    if not isinstance(cost, dict):
+        return []
+    added = cost.get("total_lines_added")
+    removed = cost.get("total_lines_removed")
+    if not isinstance(added, int) or not isinstance(removed, int):
+        return []
+    return [(f"+{added}", "added"), (f"-{removed}", "removed")]
+
+
+def _nested_str(payload: dict, outer: str, inner: str) -> str | None:
+    section = payload.get(outer)
+    if not isinstance(section, dict):
+        return None
+    value = section.get(inner)
+    return value if isinstance(value, str) and value else None
+
+
 def shorten_labels(snapshot: UsageSnapshot) -> UsageSnapshot:
     """Abbreviate labels so a one-line statusline keeps room for bars.
 

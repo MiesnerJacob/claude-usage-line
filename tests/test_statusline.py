@@ -9,7 +9,9 @@ import unittest
 
 from herdr_usage_pane.model import UsageSnapshot, UsageWindow
 from herdr_usage_pane.statusline import (
+    info_segments,
     merge_scoped,
+    shorten_labels,
     snapshot_from_payload,
 )
 
@@ -86,6 +88,65 @@ class MergeScopedTest(unittest.TestCase):
         )
         self.assertEqual(merge_scoped(self._live(), cached).captured_at, 100.0)
 
+
+
+class InfoSegmentsTest(unittest.TestCase):
+    def test_reads_model_effort_and_line_counts(self) -> None:
+        payload = {
+            "model": {"display_name": "Opus 5 (1M context)"},
+            "effort": {"level": "medium"},
+            "cost": {"total_lines_added": 3577, "total_lines_removed": 284},
+        }
+        self.assertEqual(
+            info_segments(payload),
+            [
+                ("Opus 5 (1M context)", "dim"),
+                ("effort medium", "dim"),
+                ("+3577", "added"),
+                ("-284", "removed"),
+            ],
+        )
+
+    def test_skips_missing_sections(self) -> None:
+        self.assertEqual(info_segments({}), [])
+
+    def test_skips_line_counts_that_are_not_integers(self) -> None:
+        payload = {"cost": {"total_lines_added": "many", "total_lines_removed": 1}}
+        self.assertEqual(info_segments(payload), [])
+
+    def test_ignores_non_dict_sections(self) -> None:
+        self.assertEqual(info_segments({"model": "opus", "effort": 3}), [])
+
+
+class ShortenLabelsTest(unittest.TestCase):
+    def test_abbreviates_known_labels(self) -> None:
+        snapshot = UsageSnapshot(
+            windows=(
+                UsageWindow("Context", 42.0),
+                UsageWindow("Current Session", 72.0),
+                UsageWindow("Week (all)", 41.0),
+                UsageWindow("Week (Fable)", 28.0),
+            ),
+            captured_at=0.0,
+        )
+        self.assertEqual(
+            [w.label for w in shorten_labels(snapshot).windows],
+            ["Ctx", "Session", "Week", "Fable"],
+        )
+
+    def test_preserves_percentages_and_resets(self) -> None:
+        snapshot = UsageSnapshot(
+            windows=(UsageWindow("Week (Fable)", 28.0, resets_at=99),),
+            captured_at=0.0,
+        )
+        window = shorten_labels(snapshot).windows[0]
+        self.assertEqual((window.used_percentage, window.resets_at), (28.0, 99))
+
+    def test_unknown_label_is_left_alone(self) -> None:
+        snapshot = UsageSnapshot(
+            windows=(UsageWindow("Something Else", 1.0),), captured_at=0.0
+        )
+        self.assertEqual(shorten_labels(snapshot).windows[0].label, "Something Else")
 
 if __name__ == "__main__":
     unittest.main()

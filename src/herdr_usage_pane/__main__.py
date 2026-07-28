@@ -16,11 +16,12 @@ from .cache import read_snapshot, spawn_background_refresh
 from .client import UsageClient, UsageUnavailable
 from .credentials import CredentialsError, resolve_access_token
 from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
-from .render import COMPACT_WIDTH, render_line
+from .render import COMPACT_WIDTH, render_info_row, render_line
 from .model import UsageSnapshot
 from .statusline import (
     context_window_from_payload,
     git_label,
+    info_segments,
     shorten_labels,
     merge_scoped,
     read_stdin_payload,
@@ -135,6 +136,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="also show the session's context-window usage",
     )
     parser.add_argument(
+        "--info-row",
+        action="store_true",
+        help="print a context row above the bars: branch, model, effort, lines",
+    )
+    parser.add_argument(
         "--short-labels",
         action="store_true",
         help="abbreviate window labels so a one-line readout keeps its bars",
@@ -193,13 +199,19 @@ def _render_cached(args: argparse.Namespace) -> str | None:
             )
     if args.short_labels:
         snapshot = shorten_labels(snapshot)
-    return render_line(
+    width = shutil.get_terminal_size((80, 1)).columns
+    color = _should_colorize(args)
+    bars = render_line(
         snapshot,
-        width=shutil.get_terminal_size((80, 1)).columns,
+        width=width,
         now=now,
-        color=_should_colorize(args),
+        color=color,
         prefix=git_label(payload.get("cwd")) if args.branch else None,
     )
+    if not args.info_row:
+        return bars
+    info = render_info_row(info_segments(payload), width, color)
+    return f"{info}\n{bars}" if info else bars
 
 
 def _refresh_cache(client: UsageClient, args: argparse.Namespace) -> int:
