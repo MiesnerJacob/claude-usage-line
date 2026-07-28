@@ -401,5 +401,28 @@ class NamesOverlapTest(unittest.TestCase):
         self.assertFalse(_names_overlap("hotfix-login", "feature/logging"))
 
 
+
+class WorktreeNameOverlapTest(unittest.TestCase):
+    """Real directory/branch pairs, which follow no single naming rule."""
+
+    def test_shared_ticket_mid_string_counts_as_redundant(self) -> None:
+        # Directory names only the ticket; branch carries the full slug.
+        self.assertTrue(
+            _names_overlap("mentality-ment-458", "fix/ment-458-narrow-exception-handling")
+        )
+
+    def test_shared_full_slug_counts_as_redundant(self) -> None:
+        self.assertTrue(
+            _names_overlap(
+                "mentality-ment-210-form-cancel-decline",
+                "feature/ment-210-form-cancel-decline",
+            )
+        )
+
+    def test_unrelated_names_are_kept(self) -> None:
+        self.assertFalse(_names_overlap("scratchpad", "main"))
+        self.assertFalse(_names_overlap("experiment", "staging"))
+        self.assertFalse(_names_overlap("hotfix-login", "feature/logging"))
+
 if __name__ == "__main__":
     unittest.main()

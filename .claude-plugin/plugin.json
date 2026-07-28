@@ -1,0 +1,12 @@
+{
+  "name": "claude-usage-line",
+  "displayName": "Claude Usage Line",
+  "description": "Status line showing Claude usage limits, context, model and git branch. Also renders in a herdr pane.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Jacob Miesner"
+  },
+  "license": "MIT",
+  "keywords": ["statusline", "usage", "rate-limits", "context", "git", "herdr"],
+  "skills": "./skills/"
+}
