@@ -1,4 +1,4 @@
-"""Command-line entry point for the herdr usage readout."""
+"""Command-line entry point for the Claude usage status line."""
 
 from __future__ import annotations
 

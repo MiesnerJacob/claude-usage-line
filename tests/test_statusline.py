@@ -191,7 +191,7 @@ class GitLabelTest(unittest.TestCase):
 
     def test_worktree_is_marked(self) -> None:
         tree = self._worktree("project-ment-210", "refs/heads/feature/ment-210")
-        self.assertEqual(git_label(str(tree)), "feature/ment-210")
+        self.assertEqual(git_label(str(tree)), "[feature/ment-210]")
 
     def test_redundant_worktree_name_is_dropped(self) -> None:
         tree = self._worktree(
@@ -199,12 +199,12 @@ class GitLabelTest(unittest.TestCase):
             "refs/heads/fix/ment-402-ppt-attachment-extraction",
         )
         self.assertEqual(
-            git_label(str(tree)), "fix/ment-402-ppt-attachment-extraction"
+            git_label(str(tree)), "[fix/ment-402-ppt-attachment-extraction]"
         )
 
     def test_distinct_worktree_name_is_kept(self) -> None:
         tree = self._worktree("scratchpad", "refs/heads/main")
-        self.assertEqual(git_label(str(tree)), "scratchpad:main")
+        self.assertEqual(git_label(str(tree)), "[scratchpad:main]")
 
     def test_detached_head_shows_a_short_sha(self) -> None:
         repo = self._main_repo()
@@ -358,7 +358,7 @@ class BranchSourceTest(unittest.TestCase):
 
     def test_activity_prefers_the_edited_worktree(self) -> None:
         segments = info_segments(self.payload, branch_source="activity")
-        self.assertEqual(segments[0], ("feature/ment-210-form-cancel", "worktree"))
+        self.assertEqual(segments[0], ("[feature/ment-210-form-cancel]", "worktree"))
 
     def test_cwd_reports_the_shell_directory(self) -> None:
         segments = info_segments(self.payload, branch_source="cwd")

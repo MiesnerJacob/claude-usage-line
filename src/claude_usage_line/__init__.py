@@ -1,3 +1,3 @@
-"""Condensed Claude Code usage-vs-limits readout for a pinned herdr pane."""
+"""Claude Code status line: usage against rate limits, context, and branch."""
 
 __version__ = "0.1.0"

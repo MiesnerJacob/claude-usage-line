@@ -1,6 +1,6 @@
 """Domain model for Claude subscription rate-limit windows.
 
-Pure data and arithmetic. Nothing here knows about HTTP, terminals, or herdr.
+Pure data and arithmetic. Nothing here knows about HTTP or terminals.
 """
 
 from __future__ import annotations

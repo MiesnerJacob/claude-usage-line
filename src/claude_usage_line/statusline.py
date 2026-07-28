@@ -279,9 +279,9 @@ def _read_tail(path: Path, limit: int) -> str:
 def git_context(cwd: str | None) -> tuple[str, bool] | None:
     """The branch label and whether it belongs to a linked worktree.
 
-    Worktrees are distinguished by colour rather than a text marker: a prefix
-    like `wt ` spends columns on every render to convey one bit, and the branch
-    name is what you actually read.
+    Worktrees are bracketed and coloured differently. Colour alone proved too
+    subtle to notice, and a word like `wt ` spends columns to convey one bit;
+    brackets read as a marker at a glance and survive with colour disabled.
     """
     if not cwd:
         return None
@@ -293,10 +293,10 @@ def git_context(cwd: str | None) -> tuple[str, bool] | None:
     if worktree is None:
         return (branch, False) if branch else None
     if branch is None:
-        return (worktree, True)
+        return (f"[{worktree}]", True)
     if _names_overlap(worktree, branch):
-        return (branch, True)
-    return (f"{worktree}:{branch}", True)
+        return (f"[{branch}]", True)
+    return (f"[{worktree}:{branch}]", True)
 
 
 def git_label(cwd: str | None) -> str | None:
