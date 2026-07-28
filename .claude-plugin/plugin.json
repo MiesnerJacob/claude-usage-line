@@ -2,7 +2,7 @@
   "name": "claude-usage-line",
   "displayName": "Claude Usage Line",
   "description": "Status line showing Claude usage against rate limits, plus context, model, effort and git branch or worktree.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": {
     "name": "Jacob Miesner",
     "url": "https://github.com/MiesnerJacob"

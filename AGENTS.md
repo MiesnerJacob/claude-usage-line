@@ -45,8 +45,12 @@ began, and `/reload-plugins` does not replay the event. That is precisely the
 session where someone is looking for the status line, so setup would appear
 broken on first install.
 
-So `UserPromptSubmit` runs it too, guarded by a `grep` for our launcher in
-`settings.json` so the common path never starts Python.
+So `UserPromptSubmit` runs it too, guarded by a `grep` so the common path never
+starts Python. Grep for **`bin/claude-usage-line`**, not the bare plugin name:
+installing a plugin writes `"claude-usage-line@<marketplace>": true` into
+`enabledPlugins` in the same file, so a bare-name guard matches the moment the
+plugin is installed and the setup never runs. Match on something that only the
+`statusLine` command contains.
 
 ## Do not declare hooks in plugin.json
 
