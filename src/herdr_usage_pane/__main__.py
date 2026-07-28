@@ -145,6 +145,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print a context row above the bars: branch, model, effort, lines",
     )
     parser.add_argument(
+        "--info-position",
+        choices=("above", "below"),
+        default="above",
+        help="whether the info row sits above or below the bars",
+    )
+    parser.add_argument(
         "--row-gap",
         type=int,
         default=0,
@@ -224,8 +230,9 @@ def _render_cached(args: argparse.Namespace) -> str | None:
     info = render_info_row(info_segments(payload), width, color)
     if not info:
         return bars
-    gap = "\n".join(GAP_ROW for _ in range(max(0, args.row_gap)))
-    return f"{info}\n{gap}\n{bars}" if gap else f"{info}\n{bars}"
+    rows = [bars, info] if args.info_position == "below" else [info, bars]
+    gap = [GAP_ROW] * max(0, args.row_gap)
+    return "\n".join([rows[0], *gap, rows[1]])
 
 
 def _refresh_cache(client: UsageClient, args: argparse.Namespace) -> int:
