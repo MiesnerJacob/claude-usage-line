@@ -24,6 +24,7 @@ from .render import COMPACT_WIDTH, render_info_row, render_line
 from .model import UsageSnapshot
 from .statusline import (
     context_window_from_payload,
+    context_segment,
     git_label,
     info_segments,
     shorten_labels,
@@ -136,8 +137,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--context",
-        action="store_true",
-        help="also show the session's context-window usage",
+        choices=("off", "bar", "count"),
+        default="off",
+        help=(
+            "context-window display: bar puts it beside the limits, count puts "
+            "a token figure in the info row"
+        ),
     )
     parser.add_argument(
         "--info-row",
@@ -207,7 +212,7 @@ def _render_cached(args: argparse.Namespace) -> str | None:
     if snapshot is None:
         return None
 
-    if args.context:
+    if args.context == "bar":
         context = context_window_from_payload(payload)
         if context is not None:
             snapshot = UsageSnapshot(
@@ -227,7 +232,12 @@ def _render_cached(args: argparse.Namespace) -> str | None:
     )
     if not args.info_row:
         return bars
-    info = render_info_row(info_segments(payload), width, color)
+    segments = info_segments(payload)
+    if args.context == "count":
+        counted = context_segment(payload)
+        if counted is not None:
+            segments.append(counted)
+    info = render_info_row(segments, width, color)
     if not info:
         return bars
     rows = [bars, info] if args.info_position == "below" else [info, bars]

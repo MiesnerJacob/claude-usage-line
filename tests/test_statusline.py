@@ -11,6 +11,7 @@ from pathlib import Path
 
 from herdr_usage_pane.model import UsageSnapshot, UsageWindow
 from herdr_usage_pane.statusline import (
+    context_segment,
     git_label,
     info_segments,
     merge_scoped,
@@ -218,6 +219,54 @@ class GitLabelTest(unittest.TestCase):
 
     def test_no_cwd_is_none(self) -> None:
         self.assertIsNone(git_label(None))
+
+
+class ContextSegmentTest(unittest.TestCase):
+    def test_formats_tokens_against_the_window(self) -> None:
+        payload = {
+            "context_window": {
+                "used_percentage": 42,
+                "total_input_tokens": 422810,
+                "context_window_size": 1000000,
+            }
+        }
+        self.assertEqual(context_segment(payload), ("ctx 423k/1M 42%", "dim"))
+
+    def test_derives_percentage_when_absent(self) -> None:
+        payload = {
+            "context_window": {
+                "total_input_tokens": 100000,
+                "context_window_size": 200000,
+            }
+        }
+        self.assertEqual(context_segment(payload), ("ctx 100k/200k 50%", "dim"))
+
+    def test_missing_section_is_none(self) -> None:
+        self.assertIsNone(context_segment({}))
+
+    def test_zero_window_size_is_none(self) -> None:
+        payload = {
+            "context_window": {"total_input_tokens": 1, "context_window_size": 0}
+        }
+        self.assertIsNone(context_segment(payload))
+
+    def test_non_integer_tokens_is_none(self) -> None:
+        payload = {
+            "context_window": {
+                "total_input_tokens": "lots",
+                "context_window_size": 1000,
+            }
+        }
+        self.assertIsNone(context_segment(payload))
+
+    def test_small_counts_are_not_abbreviated(self) -> None:
+        payload = {
+            "context_window": {
+                "total_input_tokens": 850,
+                "context_window_size": 200000,
+            }
+        }
+        self.assertEqual(context_segment(payload)[0], "ctx 850/200k 0%")
 
 if __name__ == "__main__":
     unittest.main()

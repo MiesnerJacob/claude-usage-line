@@ -176,6 +176,38 @@ def _short_label(label: str) -> str:
     return label
 
 
+def context_segment(payload: dict) -> tuple[str, str] | None:
+    """Context as a raw count for the info row, e.g. `ctx 423k/1M 42%`.
+
+    Preferred over a bar: a rate limit is a wall you can only wait out, while
+    context is acted on by compacting, and the actionable figure is tokens
+    against the window size. It is also the only window with no reset time, so
+    as a bar it is the one without a countdown.
+    """
+    context = payload.get("context_window")
+    if not isinstance(context, dict):
+        return None
+    used = context.get("total_input_tokens")
+    size = context.get("context_window_size")
+    percentage = context.get("used_percentage")
+    if not isinstance(used, int) or not isinstance(size, int) or size <= 0:
+        return None
+    shown = percentage if isinstance(percentage, (int, float)) else used / size * 100
+    return (
+        f"ctx {_compact_tokens(used)}/{_compact_tokens(size)} {round(shown)}%",
+        "dim",
+    )
+
+
+def _compact_tokens(count: int) -> str:
+    if count >= 1_000_000:
+        millions = count / 1_000_000
+        return f"{millions:.0f}M" if millions >= 10 or millions.is_integer() else f"{millions:.1f}M"
+    if count >= 1_000:
+        return f"{round(count / 1_000)}k"
+    return str(count)
+
+
 def context_window_from_payload(payload: dict) -> UsageWindow | None:
     """The session's context-window fill, which the payload also carries."""
     context = payload.get("context_window")
