@@ -140,6 +140,7 @@ def _run_reporter(poller: UsagePoller, args: argparse.Namespace) -> int:
         ),
         publish_interval=args.interval,
         on_error=lambda message: _fail(message),
+        resolve_target=None if args.target_id else lambda: _resolve_target(args),
     )
     return publisher.run_once() if args.once else publisher.run()
 
@@ -147,9 +148,7 @@ def _run_reporter(poller: UsagePoller, args: argparse.Namespace) -> int:
 def _resolve_target(args: argparse.Namespace) -> ReporterTarget:
     if args.target_id:
         return ReporterTarget(kind=args.target, entity_id=args.target_id)
-    if args.target == "pane":
-        raise ReporterError("--target pane requires --target-id")
-    return resolve_default_target()
+    return resolve_default_target(args.target)
 
 
 def _version_hint() -> str:

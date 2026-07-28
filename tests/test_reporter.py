@@ -14,17 +14,18 @@ from herdr_usage_pane.reporter import (
     ReporterTarget,
     SidebarReporter,
     parse_version,
+    token_name,
 )
 
 
-def _snapshot() -> UsageSnapshot:
-    return UsageSnapshot(
-        windows=(
-            UsageWindow("5h", 35.0, resets_at=8_040),
-            UsageWindow("7d", 32.0, resets_at=200_000),
-        ),
-        captured_at=0.0,
-    )
+def _snapshot(scoped: bool = False) -> UsageSnapshot:
+    windows = [
+        UsageWindow("5h", 35.0, resets_at=8_040),
+        UsageWindow("7d", 32.0, resets_at=200_000),
+    ]
+    if scoped:
+        windows.append(UsageWindow("Fable", 28.0, resets_at=200_000))
+    return UsageSnapshot(windows=tuple(windows), captured_at=0.0)
 
 
 class RecordingReporter(SidebarReporter):
@@ -81,11 +82,44 @@ class PublishTest(unittest.TestCase):
         self.assertIn("--source", args)
         self.assertEqual(args[args.index("--ttl-ms") + 1], "90000")
 
-    def test_clear_removes_every_owned_token(self) -> None:
+    def test_clear_removes_every_published_token(self) -> None:
+        self.reporter.publish(_snapshot(scoped=True))
         self.reporter.clear()
-        args = self.reporter.commands[0]
+        args = self.reporter.commands[-1]
         cleared = {args[i + 1] for i, a in enumerate(args) if a == "--clear-token"}
-        self.assertEqual(cleared, {"usage", "usage_5h", "usage_7d"})
+        self.assertEqual(
+            cleared, {"usage", "usage_5h", "usage_7d", "usage_fable"}
+        )
+
+    def test_scoped_window_gets_its_own_token(self) -> None:
+        self.reporter.publish(_snapshot(scoped=True))
+        self.assertIn("usage_fable", self._tokens())
+
+    def test_stacked_labels_are_padded_for_alignment(self) -> None:
+        self.reporter.publish(_snapshot(scoped=True))
+        tokens = self._tokens()
+        widths = {
+            name: value.index("%")
+            for name, value in tokens.items()
+            if name != "usage"
+        }
+        self.assertEqual(len(set(widths.values())), 1, widths)
+
+
+class TokenNameTest(unittest.TestCase):
+    def test_simple_label(self) -> None:
+        self.assertEqual(token_name("5h"), "usage_5h")
+
+    def test_scoped_label_is_slugified(self) -> None:
+        self.assertEqual(token_name("7d Fable"), "usage_7d_fable")
+
+    def test_punctuation_collapses_to_underscores(self) -> None:
+        self.assertEqual(token_name("7d Claude-Opus"), "usage_7d_claude_opus")
+
+    def test_adjacent_punctuation_does_not_double_underscore(self) -> None:
+        self.assertEqual(token_name("Week (all)"), "usage_week_all")
+        self.assertEqual(token_name("Week (Fable)"), "usage_week_fable")
+        self.assertEqual(token_name("Current Session"), "usage_current_session")
 
 
 class TargetTest(unittest.TestCase):

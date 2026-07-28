@@ -23,10 +23,10 @@ platforms = ["linux", "macos"]
 # split panes, so scripts/open-pane.sh resizes the split after opening instead.
 [[panes]]
 id = "usage"
-title = "Claude usage"
+title = "Claude Code Usage"
 placement = "split"
 platforms = ["linux", "macos"]
-command = ["./bin/herdr-usage-pane"]
+command = ["./bin/herdr-usage-pane", "--all-windows"]
 
 [[actions]]
 id = "show"
@@ -57,8 +57,9 @@ platforms = ["linux", "macos"]
 command = ["./bin/herdr-usage-pane", "--probe"]
 
 #
-# Prefers the sidebar on herdr 0.7.5+ and falls back to the split pane on older
-# releases, so one hook serves both without the user choosing.
+# Opens the panel pane after each session restore. The sidebar-token mode is
+# opt-in via the `sidebar` action rather than the default: it cannot draw a
+# header or full-width bars, and it changes the height of an agent card.
 [[startup]]
 platforms = ["linux", "macos"]
-command = ["sh", "scripts/start-readout.sh"]
+command = ["sh", "scripts/open-pane.sh"]

@@ -14,10 +14,14 @@ SEPARATOR = " │ "
 MIN_BAR_WIDTH = 4
 MAX_BAR_WIDTH = 12
 BAR_LAYOUT_MIN_WIDTH = 46
-COMPACT_WIDTH = 18
+COMPACT_WIDTH = 22
+
+PANEL_TITLE = "✳ Claude Code Usage"
+PANEL_MIN_HEIGHT = 2
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
+_BOLD = "\033[1m"
 _SEVERITY_COLORS = {
     Severity.NOMINAL: "\033[32m",
     Severity.ELEVATED: "\033[33m",
@@ -51,21 +55,105 @@ def render_message(text: str, width: int, color: bool = True) -> str:
     return _fit(_paint(f"claude usage — {text}", _DIM, color), width)
 
 
-def render_compact(window: UsageWindow, width: int = COMPACT_WIDTH) -> str:
+def render_panel(
+    snapshot: UsageSnapshot,
+    width: int,
+    now: float,
+    color: bool = True,
+    stale: bool = False,
+    height: int | None = None,
+) -> list[str]:
+    """Render a titled multi-row panel, one row per usage window.
+
+    Bars stretch to the pane width rather than being capped, since here the
+    space exists to use. When `height` cannot fit the header plus every window,
+    the header is dropped first: a truncated set of numbers is worse than a
+    missing title, because a missing row reads as a missing limit.
+    """
+    if not snapshot.windows:
+        return [render_message("no usage windows reported", width, color)]
+    label_width = max(len(window.label) for window in snapshot.windows)
+    rows = [
+        _render_panel_row(window, width, label_width, color)
+        for window in snapshot.windows
+    ]
+    if height is not None and height < len(rows) + 1:
+        return rows[:height]
+    return [_render_header(snapshot, width, now, color, stale), *rows]
+
+
+def _render_header(
+    snapshot: UsageSnapshot,
+    width: int,
+    now: float,
+    color: bool,
+    stale: bool,
+) -> str:
+    title = _paint(PANEL_TITLE, _BOLD, color)
+    suffix = "(stale)" if stale else _soonest_reset(snapshot, now)
+    if not suffix or _visible_length(title) + len(suffix) + 1 > width:
+        return _fit(title, width)
+    padding = width - _visible_length(title) - len(suffix)
+    return title + " " * padding + _paint(suffix, _DIM, color)
+
+
+def _soonest_reset(snapshot: UsageSnapshot, now: float) -> str:
+    countdowns = [
+        seconds
+        for seconds in (
+            window.seconds_until_reset(now) for window in snapshot.windows
+        )
+        if seconds is not None
+    ]
+    if not countdowns:
+        return ""
+    return f"resets {format_duration(min(countdowns))}"
+
+
+def _render_panel_row(
+    window: UsageWindow,
+    width: int,
+    label_width: int,
+    color: bool,
+) -> str:
+    tint = _SEVERITY_COLORS[window.severity]
+    label = window.label.ljust(label_width)
+    percent = f"{round(window.used_percentage):>3d}%"
+    bar = width - (label_width + 2 + len(percent) + 2)
+    if bar < MIN_BAR_WIDTH:
+        return _fit(f"{_paint(label, _DIM, color)} {_paint(percent, tint, color)}", width)
+    return (
+        f"{_paint(label, _DIM, color)}  "
+        f"{_render_bar(window.used_percentage, bar, tint, color)}  "
+        f"{_paint(percent, tint, color)}"
+    )
+
+
+def render_compact(
+    window: UsageWindow,
+    width: int = COMPACT_WIDTH,
+    label_width: int | None = None,
+) -> str:
     """Render one window as short plain text for a herdr sidebar token.
+
+    Pass `label_width` when rendering several windows as stacked sidebar rows:
+    padding every label to the widest one lines the bars and percentages up
+    into columns instead of ragged text.
 
     No ANSI: sidebar tokens are styled by herdr's own config, so emitting escape
     codes here would fight the user's theme rather than honour it.
     """
-    percent = f"{round(window.used_percentage)}%"
-    bar = width - (len(window.label) + 1 + len(percent) + 1)
+    label = window.label.ljust(label_width or len(window.label))
+    percent = f"{round(window.used_percentage):>3d}%"
+    bar = width - (len(label) + 1 + len(percent) + 1)
     if bar < MIN_BAR_WIDTH:
-        return f"{window.label} {percent}"
+        return f"{label} {percent}"[:width] if label_width else (
+            f"{label} {round(window.used_percentage)}%"[:width]
+        )
     bar = min(MAX_BAR_WIDTH, bar)
     filled = min(bar, max(0, round(window.used_percentage / 100 * bar)))
     return (
-        f"{window.label} {FILLED_GLYPH * filled}{EMPTY_GLYPH * (bar - filled)} "
-        f"{percent}"
+        f"{label} {FILLED_GLYPH * filled}{EMPTY_GLYPH * (bar - filled)} {percent}"
     )
 
 

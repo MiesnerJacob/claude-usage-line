@@ -38,5 +38,5 @@ print(pane.get("pane_id", ""))
 ')
 
 if [ -n "$pane_id" ]; then
-	"$HERDR" pane resize --pane "$pane_id" --direction down --amount 0.5 >/dev/null 2>&1 || true
+	python3 "$(dirname "$0")/fit-panel.py" "$pane_id" 4 >/dev/null 2>&1 || true
 fi

@@ -10,20 +10,25 @@ from __future__ import annotations
 import os
 import shutil
 import signal
+import threading
 import time
 from dataclasses import dataclass
 from typing import Callable, TextIO
 
 from .poller import DEFAULT_POLL_INTERVAL, UsagePoller
-from .render import render_line, render_message
+from .render import PANEL_MIN_HEIGHT, render_line, render_message, render_panel
 from .reporter import ReporterError, SidebarReporter
 
 DEFAULT_TICK_INTERVAL = 1.0
 FALLBACK_WIDTH = 80
+FALLBACK_HEIGHT = 4
 
 _HIDE_CURSOR = "\033[?25l"
 _SHOW_CURSOR = "\033[?25h"
 _CLEAR_LINE = "\r\033[2K"
+_CLEAR_BELOW = "\033[J"
+_DISABLE_WRAP = "\033[?7l"
+_ENABLE_WRAP = "\033[?7h"
 
 
 @dataclass(frozen=True)
@@ -36,10 +41,22 @@ class PaneOptions:
 
 
 class _InterruptibleLoop:
-    """Base for loops that must stop cleanly on SIGINT and SIGTERM."""
+    """Base for loops that must stop promptly on SIGINT and SIGTERM.
+
+    Waiting goes through an Event rather than `time.sleep`: per PEP 475 a sleep
+    resumes after a signal handler returns, so a long-sleeping loop would ignore
+    SIGTERM until the sleep elapsed. `Event.wait` returns as soon as it is set.
+    """
 
     def __init__(self) -> None:
-        self._stopped = False
+        self._stop_requested = threading.Event()
+
+    @property
+    def _stopped(self) -> bool:
+        return self._stop_requested.is_set()
+
+    def _wait(self, seconds: float) -> None:
+        self._stop_requested.wait(seconds)
 
     def _install_signal_handlers(self) -> None:
         for received in (signal.SIGINT, signal.SIGTERM):
@@ -49,7 +66,7 @@ class _InterruptibleLoop:
                 continue
 
     def _handle_stop(self, _signum: int, _frame: object) -> None:
-        self._stopped = True
+        self._stop_requested.set()
 
 
 class UsagePane(_InterruptibleLoop):
@@ -71,15 +88,36 @@ class UsagePane(_InterruptibleLoop):
     def run(self) -> int:
         """Paint until interrupted. Returns a process exit status."""
         self._install_signal_handlers()
-        self._write(_HIDE_CURSOR)
+        self._write(_HIDE_CURSOR + _DISABLE_WRAP)
         try:
             while not self._stopped:
                 self._poller.poll_if_due()
-                self._write(_CLEAR_LINE + self._current_line())
-                time.sleep(self._options.tick_interval)
+                self._paint()
+                self._wait(self._options.tick_interval)
         finally:
-            self._write(_SHOW_CURSOR + "\n")
+            self._write(_ENABLE_WRAP + _SHOW_CURSOR + "\n")
         return 0
+
+    def _paint(self) -> None:
+        """Draw the panel when the pane is tall enough, else one line."""
+        columns, rows = _terminal_size(self._stream)
+        if rows < PANEL_MIN_HEIGHT:
+            self._write(_CLEAR_LINE + self._current_line(columns))
+            return
+        self._write(_paint_rows(self._panel_lines(columns, rows)))
+
+    def _panel_lines(self, columns: int, rows: int) -> list[str]:
+        snapshot = self._poller.snapshot
+        if snapshot is None:
+            return [self._current_line(columns)]
+        return render_panel(
+            snapshot,
+            width=columns,
+            now=self._clock(),
+            color=self._options.color,
+            stale=self._poller.is_stale,
+            height=rows,
+        )[:rows]
 
     def run_once(self) -> int:
         """Poll once, print a single line, and exit. Suitable for statuslines."""
@@ -88,8 +126,9 @@ class UsagePane(_InterruptibleLoop):
         self._stream.flush()
         return 0 if self._poller.snapshot else 1
 
-    def _current_line(self) -> str:
-        width = _terminal_width(self._stream)
+    def _current_line(self, width: int | None = None) -> str:
+        if width is None:
+            width = _terminal_size(self._stream)[0]
         snapshot = self._poller.snapshot
         if snapshot is None:
             return render_message(
@@ -108,7 +147,7 @@ class UsagePane(_InterruptibleLoop):
             self._stream.write(text)
             self._stream.flush()
         except (OSError, ValueError):
-            self._stopped = True
+            self._stop_requested.set()
 
 
 class SidebarPublisher(_InterruptibleLoop):
@@ -120,12 +159,14 @@ class SidebarPublisher(_InterruptibleLoop):
         reporter: SidebarReporter,
         publish_interval: float = DEFAULT_POLL_INTERVAL,
         on_error: Callable[[str], None] | None = None,
+        resolve_target: Callable[[], object] | None = None,
     ) -> None:
         super().__init__()
         self._poller = poller
         self._reporter = reporter
         self._publish_interval = publish_interval
         self._on_error = on_error
+        self._resolve_target = resolve_target
 
     def run(self) -> int:
         """Publish until interrupted, clearing the tokens on the way out."""
@@ -133,7 +174,7 @@ class SidebarPublisher(_InterruptibleLoop):
         try:
             while not self._stopped:
                 self._publish_if_possible()
-                time.sleep(self._publish_interval)
+                self._wait(self._publish_interval)
         finally:
             self._clear_quietly()
         return 0
@@ -158,9 +199,19 @@ class SidebarPublisher(_InterruptibleLoop):
         if snapshot is None or self._poller.is_stale:
             return
         try:
+            self._follow_target()
             self._reporter.publish(snapshot)
         except ReporterError as error:
             self._report(str(error))
+
+    def _follow_target(self) -> None:
+        """Track the anchor entity, which moves as panes open and close."""
+        if self._resolve_target is None:
+            return
+        try:
+            self._reporter.retarget(self._resolve_target())  # type: ignore[arg-type]
+        except ReporterError:
+            pass
 
     def _clear_quietly(self) -> None:
         try:
@@ -173,9 +224,26 @@ class SidebarPublisher(_InterruptibleLoop):
             self._on_error(message)
 
 
-def _terminal_width(stream: TextIO) -> int:
-    """Width of the pane, measured from its own descriptor where possible."""
+def _terminal_size(stream: TextIO) -> tuple[int, int]:
+    """Columns and rows of the pane, from its own descriptor where possible."""
     try:
-        return os.get_terminal_size(stream.fileno()).columns
+        size = os.get_terminal_size(stream.fileno())
     except (OSError, ValueError, AttributeError):
-        return shutil.get_terminal_size((FALLBACK_WIDTH, 1)).columns
+        size = shutil.get_terminal_size((FALLBACK_WIDTH, FALLBACK_HEIGHT))
+    return size.columns, size.lines
+
+
+def _paint_rows(lines: list[str]) -> str:
+    """Redraw rows at absolute positions, clearing anything left below.
+
+    Deliberately no newlines: emitting one after the last line of a full-height
+    pane scrolls the buffer up and takes the header off screen. Addressing each
+    row directly keeps the panel anchored.
+    """
+    painted = "".join(
+        f"\033[{row};1H\033[2K{line}" for row, line in enumerate(lines, start=1)
+    )
+    # Park the cursor at the start of the first unused row before clearing.
+    # `ED 0` erases from the cursor cell *inclusive*, so clearing while parked on
+    # the last written character silently eats it.
+    return f"{painted}\033[{len(lines) + 1};1H{_CLEAR_BELOW}"

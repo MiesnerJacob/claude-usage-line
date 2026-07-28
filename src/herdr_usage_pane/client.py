@@ -24,15 +24,15 @@ FALLBACK_CLAUDE_VERSION = "2.0.0"
 VERSION_TIMEOUT_SECONDS = 5.0
 
 LEGACY_WINDOW_LABELS: dict[str, str] = {
-    "five_hour": "5h",
-    "seven_day": "7d",
-    "seven_day_opus": "7d opus",
+    "five_hour": "Current Session",
+    "seven_day": "Week (all)",
+    "seven_day_opus": "Week (Opus)",
 }
 
 KIND_LABELS: dict[str, str] = {
-    "session": "5h",
-    "weekly_all": "7d",
-    "weekly_scoped": "7d",
+    "session": "Current Session",
+    "weekly_all": "Week (all)",
+    "weekly_scoped": "Week",
 }
 PRIMARY_KINDS = ("session", "weekly_all")
 
@@ -153,7 +153,11 @@ def _parse_limit_entry(entry: Any, include_scoped: bool) -> UsageWindow | None:
 
 
 def _limit_label(entry: dict[str, Any], kind: str) -> str:
-    """Label for a limit, qualified by model name when the limit is scoped."""
+    """Label for a limit, naming the model when the limit is model-scoped.
+
+    Labels mirror the wording of Claude Code's own `/usage` screen so the
+    sidebar and that screen can be read against each other without translation.
+    """
     base = KIND_LABELS[kind]
     scope = entry.get("scope")
     if not isinstance(scope, dict):
@@ -162,7 +166,7 @@ def _limit_label(entry: dict[str, Any], kind: str) -> str:
     if not isinstance(model, dict):
         return base
     name = model.get("display_name")
-    return f"{base} {name}" if isinstance(name, str) and name else base
+    return f"{base} ({name})" if isinstance(name, str) and name else base
 
 
 def _reported_severity(entry: dict[str, Any]) -> Severity | None:

@@ -7,6 +7,8 @@ import unittest
 from herdr_usage_pane.model import UsageSnapshot, UsageWindow
 from herdr_usage_pane.render import (
     BAR_LAYOUT_MIN_WIDTH,
+    PANEL_TITLE,
+    render_panel,
     _visible_length,
     format_duration,
     render_compact,
@@ -79,7 +81,7 @@ class RenderLineTest(unittest.TestCase):
     def test_coloured_output_also_respects_width(self) -> None:
         snapshot = _snapshot(
             UsageWindow("5h", 68.0, resets_at=8_040),
-            UsageWindow("7d opus", 23.0, resets_at=200_000),
+            UsageWindow("Week (Opus)", 23.0, resets_at=200_000),
         )
         for width in range(10, 120):
             with self.subTest(width=width):
@@ -124,6 +126,11 @@ class CompactRenderTest(unittest.TestCase):
         text = render_compact(UsageWindow("5h", 35.0), width=18)
         self.assertNotIn("\033", text)
 
+    def test_compact_aligns_percent_column_when_padded(self) -> None:
+        windows = (UsageWindow("5h", 35.0), UsageWindow("Fable", 28.0))
+        rendered = [render_compact(w, 20, label_width=8) for w in windows]
+        self.assertEqual(len({line.index("%") for line in rendered}), 1, rendered)
+
     def test_compact_window_respects_width(self) -> None:
         for width in range(6, 40):
             with self.subTest(width=width):
@@ -145,11 +152,61 @@ class CompactRenderTest(unittest.TestCase):
         snapshot = _snapshot(
             UsageWindow("5h", 100.0),
             UsageWindow("7d", 100.0),
-            UsageWindow("7d opus", 100.0),
+            UsageWindow("Week (Opus)", 100.0),
         )
         for width in range(6, 40):
             with self.subTest(width=width):
                 self.assertLessEqual(len(render_summary(snapshot, width)), width)
+
+
+class RenderPanelTest(unittest.TestCase):
+    def _panel(self, width: int, **kwargs: object) -> list[str]:
+        snapshot = _snapshot(
+            UsageWindow("Current Session", 58.0, resets_at=8_760),
+            UsageWindow("Week (all)", 40.0, resets_at=200_000),
+            UsageWindow("Week (Fable)", 28.0, resets_at=200_000),
+        )
+        return render_panel(
+            snapshot, width=width, now=0.0, color=False, **kwargs
+        )  # type: ignore[arg-type]
+
+    def test_one_header_plus_one_row_per_window(self) -> None:
+        self.assertEqual(len(self._panel(60)), 4)
+
+    def test_header_carries_title_and_soonest_reset(self) -> None:
+        header = self._panel(60)[0]
+        self.assertIn(PANEL_TITLE, header)
+        self.assertIn("resets 2h26m", header)
+
+    def test_labels_are_aligned_into_a_column(self) -> None:
+        rows = self._panel(60)[1:]
+        self.assertEqual(len({row.index("█") for row in rows}), 1, rows)
+
+    def test_no_row_exceeds_width(self) -> None:
+        for width in range(12, 120):
+            with self.subTest(width=width):
+                for row in self._panel(width):
+                    self.assertLessEqual(_visible_length(row), width)
+
+    def test_stale_replaces_the_reset_countdown(self) -> None:
+        header = self._panel(60, stale=True)[0]
+        self.assertIn("(stale)", header)
+        self.assertNotIn("resets", header)
+
+    def test_empty_snapshot_yields_one_message_row(self) -> None:
+        lines = render_panel(_snapshot(), width=60, now=0.0, color=False)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("no usage windows", lines[0])
+
+    def test_coloured_panel_respects_width(self) -> None:
+        snapshot = _snapshot(
+            UsageWindow("Current Session", 99.0, resets_at=60),
+            UsageWindow("Week (Fable)", 28.0),
+        )
+        for width in range(12, 90):
+            with self.subTest(width=width):
+                for row in render_panel(snapshot, width=width, now=0.0, color=True):
+                    self.assertLessEqual(_visible_length(row), width)
 
 
 class RenderMessageTest(unittest.TestCase):

@@ -28,8 +28,12 @@ if [ -f "$PIDFILE" ]; then
 	rm -f "$PIDFILE"
 fi
 
-if "$READOUT" --report --once >/dev/null 2>&1; then
-	nohup "$READOUT" --report >>"$STATE/reporter.log" 2>&1 &
+# Which sidebar section renders the tokens must match where they are published:
+# `pane` feeds [ui.sidebar.agents], `workspace` feeds [ui.sidebar.spaces].
+TARGET="${HERDR_USAGE_TARGET:-pane}"
+
+if "$READOUT" --report --once --all-windows --target "$TARGET" >/dev/null 2>&1; then
+	nohup "$READOUT" --report --all-windows --target "$TARGET" >>"$STATE/reporter.log" 2>&1 &
 	echo $! >"$PIDFILE"
 	exit 0
 fi

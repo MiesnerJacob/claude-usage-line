@@ -64,14 +64,14 @@ class LivePayloadTest(unittest.TestCase):
 
     def test_prefers_limits_array_over_legacy_keys(self) -> None:
         snapshot = parse_snapshot(LIVE_PAYLOAD, now=0.0)
-        self.assertEqual([w.label for w in snapshot.windows], ["5h", "7d"])
+        self.assertEqual([w.label for w in snapshot.windows], ["Current Session", "Week (all)"])
         self.assertEqual(snapshot.windows[0].used_percentage, 33.0)
         self.assertEqual(snapshot.windows[1].used_percentage, 31.0)
 
     def test_scoped_window_included_on_request(self) -> None:
         snapshot = parse_snapshot(LIVE_PAYLOAD, now=0.0, include_scoped=True)
         self.assertEqual(
-            [w.label for w in snapshot.windows], ["5h", "7d", "7d Fable"]
+            [w.label for w in snapshot.windows], ["Current Session", "Week (all)", "Week (Fable)"]
         )
 
     def test_server_severity_is_trusted_over_thresholds(self) -> None:
@@ -103,7 +103,7 @@ class LivePayloadTest(unittest.TestCase):
 
     def test_null_windows_are_ignored(self) -> None:
         snapshot = parse_snapshot(LIVE_PAYLOAD, now=0.0)
-        self.assertNotIn("7d opus", [w.label for w in snapshot.windows])
+        self.assertNotIn("Week (Opus)", [w.label for w in snapshot.windows])
 
     def test_falls_back_to_legacy_keys_when_limits_absent(self) -> None:
         payload = {
@@ -112,12 +112,12 @@ class LivePayloadTest(unittest.TestCase):
             if key != "limits"
         }
         snapshot = parse_snapshot(payload, now=0.0)
-        self.assertEqual([w.label for w in snapshot.windows], ["5h", "7d"])
+        self.assertEqual([w.label for w in snapshot.windows], ["Current Session", "Week (all)"])
 
     def test_falls_back_when_limits_is_empty(self) -> None:
         payload = {**LIVE_PAYLOAD, "limits": []}
         snapshot = parse_snapshot(payload, now=0.0)
-        self.assertEqual([w.label for w in snapshot.windows], ["5h", "7d"])
+        self.assertEqual([w.label for w in snapshot.windows], ["Current Session", "Week (all)"])
 
     def test_unrecognised_limit_kind_skipped(self) -> None:
         payload = {"limits": [{"kind": "iguana_necktie", "percent": 50}]}
@@ -135,7 +135,7 @@ class ParseSnapshotTest(unittest.TestCase):
             now=0.0,
         )
         self.assertEqual(len(snapshot.windows), 2)
-        self.assertEqual(snapshot.windows[0].label, "5h")
+        self.assertEqual(snapshot.windows[0].label, "Current Session")
         self.assertEqual(snapshot.windows[0].used_percentage, 68.0)
         self.assertEqual(snapshot.windows[1].resets_at, 1_700_500_000)
 
@@ -176,7 +176,7 @@ class ParseSnapshotTest(unittest.TestCase):
             {"five_hour": {"utilization": 12}, "seven_day": {"resets_at": 5}},
             now=0.0,
         )
-        self.assertEqual([w.label for w in snapshot.windows], ["5h"])
+        self.assertEqual([w.label for w in snapshot.windows], ["Current Session"])
 
     def test_includes_opus_window_when_present(self) -> None:
         snapshot = parse_snapshot(
@@ -187,7 +187,7 @@ class ParseSnapshotTest(unittest.TestCase):
             },
             now=0.0,
         )
-        self.assertEqual([w.label for w in snapshot.windows], ["5h", "7d", "7d opus"])
+        self.assertEqual([w.label for w in snapshot.windows], ["Current Session", "Week (all)", "Week (Opus)"])
 
     def test_raises_when_no_windows_recognised(self) -> None:
         with self.assertRaises(UsageUnavailable):

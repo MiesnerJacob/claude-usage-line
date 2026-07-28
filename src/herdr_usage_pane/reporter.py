@@ -23,7 +23,7 @@ SOURCE_ID = "usage"
 SUMMARY_TOKEN = "usage"
 COMMAND_TIMEOUT_SECONDS = 10.0
 
-LABEL_TOKEN_SUFFIXES = {"5h": "usage_5h", "7d": "usage_7d"}
+TOKEN_PREFIX = "usage"
 
 
 class ReporterError(RuntimeError):
@@ -61,25 +61,45 @@ class SidebarReporter:
         self._herdr = herdr_binary
         self._ttl_ms = ttl_ms
         self._token_width = token_width
+        self._published: set[str] = set()
+
+    @property
+    def target(self) -> ReporterTarget:
+        """The entity currently carrying the tokens."""
+        return self._target
+
+    def retarget(self, target: ReporterTarget) -> None:
+        """Move to a new entity, clearing tokens off the old one first."""
+        if target == self._target:
+            return
+        try:
+            self.clear()
+        except ReporterError:
+            pass
+        self._target = target
+        self._published.clear()
 
     def publish(self, snapshot: UsageSnapshot) -> None:
         """Push one token per window, plus a combined summary token."""
-        self._run(self._publish_args(self._tokens(snapshot)))
+        tokens = self._tokens(snapshot)
+        self._published.update(tokens)
+        self._run(self._publish_args(tokens))
 
     def clear(self) -> None:
-        """Remove every token this reporter owns."""
-        names = [SUMMARY_TOKEN, *LABEL_TOKEN_SUFFIXES.values()]
+        """Remove every token this reporter has published."""
+        names = {SUMMARY_TOKEN, *self._published}
         args = [self._target.entity_id, "--source", SOURCE_ID]
-        for name in names:
+        for name in sorted(names):
             args.extend(["--clear-token", name])
         self._run(args)
 
     def _tokens(self, snapshot: UsageSnapshot) -> dict[str, str]:
+        label_width = max((len(w.label) for w in snapshot.windows), default=0)
         tokens = {SUMMARY_TOKEN: render_summary(snapshot, self._token_width)}
         for window in snapshot.windows:
-            name = LABEL_TOKEN_SUFFIXES.get(window.label)
-            if name:
-                tokens[name] = render_compact(window, self._token_width)
+            tokens[token_name(window.label)] = render_compact(
+                window, self._token_width, label_width
+            )
         return tokens
 
     def _publish_args(self, tokens: dict[str, str]) -> list[str]:
@@ -108,6 +128,20 @@ class SidebarReporter:
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             raise ReporterError(detail or "herdr rejected the metadata update")
+
+
+def token_name(label: str) -> str:
+    """Token name for a window label, e.g. `7d Fable` -> `usage_7d_fable`.
+
+    Derived from the label rather than a fixed table so scoped per-model limits
+    get tokens automatically as Anthropic adds them.
+    """
+    slug = "".join(
+        character if character.isalnum() else "_" for character in label.lower()
+    )
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return f"{TOKEN_PREFIX}_{slug.strip('_')}"
 
 
 def supports_tokens(herdr_binary: str = "herdr") -> bool:
@@ -141,8 +175,24 @@ def parse_version(text: str) -> tuple[int, ...] | None:
     return None
 
 
-def resolve_default_target(herdr_binary: str = "herdr") -> ReporterTarget:
-    """Pick the workspace to attach tokens to, preferring the focused one."""
+def resolve_default_target(
+    kind: str = "workspace", herdr_binary: str = "herdr"
+) -> ReporterTarget:
+    """Pick the entity to attach tokens to.
+
+    `workspace` uses the focused workspace. `pane` uses the lowest pane id in
+    that workspace, which is deliberately not the *focused* pane: the readout
+    would otherwise hop between sidebar entries as you move around.
+    """
+    workspace_id = _focused_workspace_id(herdr_binary)
+    if kind == "workspace":
+        return ReporterTarget(kind="workspace", entity_id=workspace_id)
+    return ReporterTarget(
+        kind="pane", entity_id=_anchor_pane_id(herdr_binary, workspace_id)
+    )
+
+
+def _focused_workspace_id(herdr_binary: str) -> str:
     payload = _run_json([herdr_binary, "workspace", "list"])
     workspaces = payload.get("result", {}).get("workspaces", [])
     if not workspaces:
@@ -151,7 +201,44 @@ def resolve_default_target(herdr_binary: str = "herdr") -> ReporterTarget:
     workspace_id = focused.get("workspace_id")
     if not workspace_id:
         raise ReporterError("herdr returned a workspace without an id")
-    return ReporterTarget(kind="workspace", entity_id=workspace_id)
+    return workspace_id
+
+
+def _anchor_pane_id(herdr_binary: str, workspace_id: str) -> str:
+    """The last entry in the agent panel, so the rows render beneath the others.
+
+    `herdr agent list` returns entries in the panel's own display order, which
+    is what determines visual position; `pane list` order does not match it once
+    grouping or attention sorting is in play. Falls back to pane order only if
+    the agent panel is empty.
+    """
+    for pane_id in reversed(_agent_panel_pane_ids(herdr_binary, workspace_id)):
+        return pane_id
+    payload = _run_json([herdr_binary, "pane", "list"])
+    panes = sorted(
+        pane["pane_id"]
+        for pane in payload.get("result", {}).get("panes", [])
+        if pane.get("workspace_id") == workspace_id and pane.get("pane_id")
+    )
+    if not panes:
+        raise ReporterError(f"no panes found in workspace {workspace_id}")
+    return panes[-1]
+
+
+def _agent_panel_pane_ids(herdr_binary: str, workspace_id: str) -> list[str]:
+    payload = _run_json([herdr_binary, "agent", "list"])
+    result = payload.get("result", {})
+    for value in result.values():
+        if not isinstance(value, list):
+            continue
+        return [
+            entry["pane_id"]
+            for entry in value
+            if isinstance(entry, dict)
+            and entry.get("pane_id")
+            and entry.get("workspace_id") == workspace_id
+        ]
+    return []
 
 
 def _run_json(command: list[str]) -> dict:
