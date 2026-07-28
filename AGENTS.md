@@ -38,6 +38,17 @@ hook. It adopts the entry when there is none, repoints it when the existing one
 names our launcher (an older version's path), and leaves any other status line
 untouched. Do not replace this with a hardcoded path.
 
+## Do not declare hooks in plugin.json
+
+`hooks/hooks.json` is discovered automatically. Adding `"hooks":
+"./hooks/hooks.json"` to `plugin.json` makes the **entire plugin fail to load**
+with "Duplicate hooks file detected". `manifest.hooks` is only for hook files at
+other paths.
+
+`claude plugin validate` does not catch this. It surfaces at load time, and the
+plugin then shows `✘ failed to load` in `claude plugin list` — which is also the
+only place the reason is printed.
+
 ## Status line constraints
 
 - **A status line is a pipe, not a tty.** `isatty()` is false, so `--color always`
